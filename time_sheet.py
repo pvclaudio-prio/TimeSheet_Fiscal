@@ -289,7 +289,127 @@ elif menu == "🏢 Cadastro de Empresas":
 
 elif menu == "🗂️ Cadastro de Projetos e Atividades":
     st.title("🗂️ Cadastro de Projetos e Atividades")
-    st.info("Em construção...")
+    st.markdown("## 🏗️ Projetos")
+
+df_projetos = carregar_arquivo("projetos.csv", ["Nome Projeto", "Descrição", "Status"])
+
+with st.form("form_projeto"):
+    nome_projeto = st.text_input("Nome do Projeto")
+    descricao_projeto = st.text_area("Descrição do Projeto")
+    status_projeto = st.selectbox("Status do Projeto", ["Não Iniciado", "Em Andamento", "Concluído"])
+
+    submitted = st.form_submit_button("💾 Salvar Projeto")
+    if submitted:
+        if not nome_projeto:
+            st.warning("⚠️ O nome do projeto é obrigatório.")
+        else:
+            if nome_projeto in df_projetos["Nome Projeto"].values:
+                st.warning("⚠️ Já existe um projeto com este nome.")
+            else:
+                novo = pd.DataFrame({
+                    "Nome Projeto": [nome_projeto.strip()],
+                    "Descrição": [descricao_projeto.strip()],
+                    "Status": [status_projeto]
+                })
+                df_projetos = pd.concat([df_projetos, novo], ignore_index=True)
+                salvar_arquivo(df_projetos, "projetos.csv")
+                st.success("✅ Projeto cadastrado com sucesso!")
+
+st.dataframe(df_projetos, use_container_width=True)
+
+# 🛠️ Edição e Exclusão de Projeto
+st.markdown("### 🔧 Editar ou Excluir Projeto")
+if not df_projetos.empty:
+    projeto_selecionado = st.selectbox("Selecione o Projeto:", df_projetos["Nome Projeto"])
+
+    projeto_info = df_projetos[df_projetos["Nome Projeto"] == projeto_selecionado].iloc[0]
+
+    novo_nome = st.text_input("Novo Nome do Projeto", value=projeto_info["Nome Projeto"])
+    nova_desc = st.text_area("Nova Descrição", value=projeto_info["Descrição"])
+    novo_status = st.selectbox("Novo Status", ["Não Iniciado", "Em Andamento", "Concluído"], index=["Não Iniciado", "Em Andamento", "Concluído"].index(projeto_info["Status"]))
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✏️ Atualizar Projeto"):
+            df_projetos.loc[df_projetos["Nome Projeto"] == projeto_selecionado, "Nome Projeto"] = novo_nome.strip()
+            df_projetos.loc[df_projetos["Nome Projeto"] == projeto_selecionado, "Descrição"] = nova_desc.strip()
+            df_projetos.loc[df_projetos["Nome Projeto"] == projeto_selecionado, "Status"] = novo_status
+            salvar_arquivo(df_projetos, "projetos.csv")
+            st.success("✅ Projeto atualizado com sucesso!")
+            st.experimental_rerun()
+
+    with col2:
+        if st.button("🗑️ Excluir Projeto"):
+            confirmar = st.radio("⚠️ Tem certeza que deseja excluir?", ["Não", "Sim"], horizontal=True)
+            if confirmar == "Sim":
+                df_projetos = df_projetos[df_projetos["Nome Projeto"] != projeto_selecionado]
+                salvar_arquivo(df_projetos, "projetos.csv")
+                st.success("✅ Projeto excluído com sucesso!")
+                st.experimental_rerun()
+
+# 🔸 ATIVIDADES
+st.markdown("---")
+st.markdown("## 🗒️ Atividades")
+
+df_atividades = carregar_arquivo("atividades.csv", ["Nome Atividade", "Projeto Vinculado", "Descrição", "Status"])
+
+with st.form("form_atividade"):
+    nome_atividade = st.text_input("Nome da Atividade")
+    projeto_vinculado = st.selectbox("Projeto Vinculado", df_projetos["Nome Projeto"])
+    descricao_atividade = st.text_area("Descrição da Atividade")
+    status_atividade = st.selectbox("Status da Atividade", ["Não Iniciada", "Em Andamento", "Concluída"])
+
+    submitted = st.form_submit_button("💾 Salvar Atividade")
+    if submitted:
+        if not nome_atividade:
+            st.warning("⚠️ O nome da atividade é obrigatório.")
+        else:
+            if nome_atividade in df_atividades["Nome Atividade"].values:
+                st.warning("⚠️ Já existe uma atividade com este nome.")
+            else:
+                nova = pd.DataFrame({
+                    "Nome Atividade": [nome_atividade.strip()],
+                    "Projeto Vinculado": [projeto_vinculado.strip()],
+                    "Descrição": [descricao_atividade.strip()],
+                    "Status": [status_atividade]
+                })
+                df_atividades = pd.concat([df_atividades, nova], ignore_index=True)
+                salvar_arquivo(df_atividades, "atividades.csv")
+                st.success("✅ Atividade cadastrada com sucesso!")
+
+st.dataframe(df_atividades, use_container_width=True)
+
+# 🛠️ Edição e Exclusão de Atividade
+st.markdown("### 🔧 Editar ou Excluir Atividade")
+if not df_atividades.empty:
+    atividade_selecionada = st.selectbox("Selecione a Atividade:", df_atividades["Nome Atividade"])
+
+    atividade_info = df_atividades[df_atividades["Nome Atividade"] == atividade_selecionada].iloc[0]
+
+    novo_nome = st.text_input("Novo Nome da Atividade", value=atividade_info["Nome Atividade"])
+    novo_projeto = st.selectbox("Novo Projeto Vinculado", df_projetos["Nome Projeto"], index=df_projetos["Nome Projeto"].tolist().index(atividade_info["Projeto Vinculado"]))
+    nova_desc = st.text_area("Nova Descrição", value=atividade_info["Descrição"])
+    novo_status = st.selectbox("Novo Status", ["Não Iniciada", "Em Andamento", "Concluída"], index=["Não Iniciada", "Em Andamento", "Concluída"].index(atividade_info["Status"]))
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✏️ Atualizar Atividade"):
+            df_atividades.loc[df_atividades["Nome Atividade"] == atividade_selecionada, "Nome Atividade"] = novo_nome.strip()
+            df_atividades.loc[df_atividades["Nome Atividade"] == atividade_selecionada, "Projeto Vinculado"] = novo_projeto.strip()
+            df_atividades.loc[df_atividades["Nome Atividade"] == atividade_selecionada, "Descrição"] = nova_desc.strip()
+            df_atividades.loc[df_atividades["Nome Atividade"] == atividade_selecionada, "Status"] = novo_status
+            salvar_arquivo(df_atividades, "atividades.csv")
+            st.success("✅ Atividade atualizada com sucesso!")
+            st.experimental_rerun()
+
+    with col2:
+        if st.button("🗑️ Excluir Atividade"):
+            confirmar = st.radio("⚠️ Tem certeza que deseja excluir?", ["Não", "Sim"], horizontal=True)
+            if confirmar == "Sim":
+                df_atividades = df_atividades[df_atividades["Nome Atividade"] != atividade_selecionada]
+                salvar_arquivo(df_atividades, "atividades.csv")
+                st.success("✅ Atividade excluída com sucesso!")
+                st.experimental_rerun()
 
 # -----------------------------
 # Menu Lançamento TS
