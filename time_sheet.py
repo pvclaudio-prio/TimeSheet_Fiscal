@@ -437,7 +437,7 @@ elif menu == "📝 Lançamento de Timesheet":
     df_atividades = carregar_arquivo("atividades.csv", ["Nome Atividade", "Projeto Vinculado", "Descrição", "Status"])
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
-        ["Usuário", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+        ["Usuário","Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
     
     # 🔸 Formulário de Lançamento
@@ -499,7 +499,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     # 🔸 Carregar Dados
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
-        ["Usuário", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+        ["Usuário","Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
     
     # Convertendo Data para datetime
