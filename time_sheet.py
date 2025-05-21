@@ -131,6 +131,54 @@ def salvar_arquivo(df, nome_arquivo):
     arquivo.SetContentFile(nome_arquivo)
     arquivo.Upload()
 
+def carregar_empresas():
+    drive = conectar_drive()
+    pasta_id = obter_pasta_ts_fiscal(drive)
+
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_id}' in parents and title = 'empresas.csv' and trashed=false"
+    }).GetList()
+
+    if not arquivos:
+        df = pd.DataFrame(columns=["Codigo SAP", "Nome Empresa", "Descrição"])
+        df.to_csv("empresas.csv", sep=";", index=False, encoding="utf-8-sig")
+        arquivo = drive.CreateFile({
+            'title': 'empresas.csv',
+            'parents': [{'id': pasta_id}]
+        })
+        arquivo.SetContentFile("empresas.csv")
+        arquivo.Upload()
+        return df
+
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
+    arquivos[0].GetContentFile(caminho_temp)
+    df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
+    return df
+
+
+def salvar_empresas(df):
+    df.to_csv("empresas.csv", sep=";", index=False, encoding="utf-8-sig")
+    drive = conectar_drive()
+    pasta_id = obter_pasta_ts_fiscal(drive)
+
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_id}' in parents and title = 'empresas.csv' and trashed=false"
+    }).GetList()
+
+    if arquivos:
+        arquivo = arquivos[0]
+    else:
+        arquivo = drive.CreateFile({
+            'title': 'empresas.csv',
+            'parents': [{'id': pasta_id}]
+        })
+
+    arquivo.SetContentFile("empresas.csv")
+    arquivo.Upload()
+    
+# -----------------------------
+# Menu Latereal
+# -----------------------------
 
 st.sidebar.title("📋 Menu Timesheet Fiscal")
 
@@ -158,37 +206,52 @@ if menu == "🏠 Dashboard":
 elif menu == "🏢 Cadastro de Empresas":
     st.title("🏢 Cadastro de Empresas (Códigos SAP)")
     st.subheader("📥 Inserir nova empresa")
+    st.markdown("### ➕ Adicionar Nova Empresa")
+
     with st.form("form_empresa"):
-        codigo = st.text_input("Código SAP")
-        nome = st.text_input("Nome da Empresa")
-        descricao = st.text_area("Descrição", placeholder="Informações adicionais (opcional)")
+        col1, col2 = st.columns([2, 4])
+        with col1:
+            codigo = st.text_input("Código SAP")
+        with col2:
+            nome = st.text_input("Nome da Empresa")
+    
+        descricao = st.text_area("Descrição (opcional)", height=100)
     
         submitted = st.form_submit_button("💾 Salvar Empresa")
         if submitted:
             if not codigo or not nome:
-                st.warning("⚠️ Código SAP e Nome são obrigatórios!")
+                st.warning("⚠️ Código SAP e Nome são obrigatórios.")
             else:
                 df = carregar_empresas()
                 if codigo in df["Codigo SAP"].values:
-                    st.warning("⚠️ Já existe uma empresa com esse Código SAP.")
+                    st.warning("⚠️ Já existe uma empresa cadastrada com este Código SAP.")
                 else:
-                    nova_empresa = pd.DataFrame({
+                    nova = pd.DataFrame({
                         "Codigo SAP": [codigo.strip()],
                         "Nome Empresa": [nome.strip()],
                         "Descrição": [descricao.strip()]
                     })
-                    df = pd.concat([df, nova_empresa], ignore_index=True)
+                    df = pd.concat([df, nova], ignore_index=True)
                     salvar_empresas(df)
                     st.success("✅ Empresa cadastrada com sucesso!")
     
-    st.subheader("🏢 Empresas Cadastradas")
+    # 📄 Empresas Cadastradas
+    st.markdown("---")
+    st.markdown("### 🏢 Empresas Cadastradas")
+    
     df_empresas = carregar_empresas()
     
     st.dataframe(df_empresas, use_container_width=True)
     
-    st.subheader("🛠️ Editar ou Excluir Empresa")
+    # 🛠️ Edição e Exclusão
+    st.markdown("---")
+    st.markdown("### 🛠️ Editar ou Excluir Empresa")
+    
     if not df_empresas.empty:
-        empresa_selecionada = st.selectbox("Selecione a empresa pelo Código SAP:", df_empresas["Codigo SAP"])
+        empresa_selecionada = st.selectbox(
+            "Selecione a empresa pelo Código SAP:",
+            df_empresas["Codigo SAP"]
+        )
     
         empresa_info = df_empresas[df_empresas["Codigo SAP"] == empresa_selecionada].iloc[0]
     
@@ -206,15 +269,15 @@ elif menu == "🏢 Cadastro de Empresas":
     
         with col2:
             if st.button("🗑️ Excluir Empresa"):
-                confirmar = st.radio("Tem certeza que deseja excluir?", ["Não", "Sim"], horizontal=True)
+                confirmar = st.radio("⚠️ Tem certeza que deseja excluir?", ["Não", "Sim"], horizontal=True)
                 if confirmar == "Sim":
                     df_empresas = df_empresas[df_empresas["Codigo SAP"] != empresa_selecionada]
                     salvar_empresas(df_empresas)
                     st.success("✅ Empresa excluída com sucesso!")
                     st.experimental_rerun()
     else:
-        st.info("Nenhuma empresa cadastrada até o momento.")
-        
+        st.info("🚩 Nenhuma empresa cadastrada até o momento.")
+            
 # -----------------------------
 # Menu Cadastro de Projeto
 # -----------------------------
