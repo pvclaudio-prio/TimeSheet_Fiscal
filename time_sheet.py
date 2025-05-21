@@ -786,7 +786,6 @@ elif menu == "📊 Avaliação de Performance — IA":
     st.title("📊 Avaliação de Performance com IA")
 
     # 🔐 Definir admins
-    admin_users = ["cvieira", "mathayde", "amendonca"]
     usuario_logado = st.session_state.username
     
     # 🔗 Carregar Dados
