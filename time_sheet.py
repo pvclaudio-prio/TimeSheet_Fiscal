@@ -72,9 +72,13 @@ def conectar_drive():
         user_agent="streamlit-app/1.0",
         revoke_uri=cred_dict["revoke_uri"]
     )
-    
-    if credentials.access_token_expired:
-        credentials.refresh(httplib2.Http())  # ✅ Correção aqui
+
+    http = httplib2.Http()
+
+    try:
+        credentials.refresh(http)
+    except Exception as e:
+        st.error(f"Erro ao atualizar credenciais: {e}")
 
     gauth = GoogleAuth()
     gauth.credentials = credentials
