@@ -426,7 +426,7 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
 
 elif menu == "📝 Lançamento de Timesheet":
     st.title("📝 Lançamento de Timesheet")
-    st.subheader("📝 Lançamento de Timesheet")
+    st.subheader("⏱️ Registro de Horas")
 
     # 🔸 Carregar Bases
     df_empresas = carregar_arquivo("empresas.csv", ["Codigo SAP", "Nome Empresa", "Descrição"])
