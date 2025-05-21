@@ -646,18 +646,11 @@ elif menu == "📄 Visualizar / Editar Timesheet":
 elif menu == "📊 Avaliação de Performance — IA":
     st.title("📊 Avaliação de Performance com IA")
 
-    # =============================
     # 🔐 Definir admins
-    # =============================
     admin_users = ["cvieira", "mathayde", "amendonca"]
     usuario_logado = st.session_state.username
     
-    
-    # =============================
     # 🔗 Carregar Dados
-    # =============================
-    st.subheader("📊 Avaliação de Performance — IA")
-    
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
         ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
@@ -670,17 +663,13 @@ elif menu == "📊 Avaliação de Performance — IA":
     # Tratamento de datas
     df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors="coerce")
     
-    # =============================
     # 🔐 Controle de Permissão
-    # =============================
     if usuario_logado not in admin_users:
         st.error("🚫 Você não tem permissão para acessar a Avaliação de Performance.")
         st.stop()
     
-    # =============================
     # 🔍 Filtro por Projeto
-    # =============================
-    st.markdown("### 🔧 Configuração da Avaliação")
+    st.markdown("### 🤖 Gerando relatório com IA")
     
     lista_projetos = sorted(df_timesheet["Projeto"].dropna().unique().tolist())
     projeto_escolhido = st.selectbox(
@@ -698,16 +687,10 @@ elif menu == "📊 Avaliação de Performance — IA":
         st.info("⚠️ Nenhum registro encontrado para o projeto selecionado.")
         st.stop()
     
-    # =============================
     # 🤖 Cliente OpenAI
-    # =============================
     client = OpenAI(api_key=st.secrets["openai"]["api_key"])
     
-    # =============================
     # 🔥 Geração do Relatório
-    # =============================
-    st.markdown("### 🤖 Gerando relatório com IA")
-    
     dados_markdown = df_filtrado.fillna("").astype(str).to_markdown(index=False)
     
     prompt = f"""
