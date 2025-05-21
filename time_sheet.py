@@ -102,7 +102,7 @@ def obter_pasta_ts_fiscal(drive):
         pasta.Upload()
         return pasta['id']
 
-def carregar_arquivo(nome_arquivo):
+def carregar_arquivo(nome_arquivo, colunas):
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
@@ -111,11 +111,20 @@ def carregar_arquivo(nome_arquivo):
     }).GetList()
 
     if not arquivos:
-        return None, None
+        df = pd.DataFrame(columns=colunas)
+        df.to_csv(nome_arquivo, sep=";", index=False, encoding="utf-8-sig")
+        arquivo = drive.CreateFile({
+            'title': nome_arquivo,
+            'parents': [{'id': pasta_id}]
+        })
+        arquivo.SetContentFile(nome_arquivo)
+        arquivo.Upload()
+        return df
 
     caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
     arquivos[0].GetContentFile(caminho_temp)
-    return pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig"), arquivos[0]
+    df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
+    return df
 
 def salvar_arquivo(df, nome_arquivo):
     df.to_csv(nome_arquivo, sep=";", index=False, encoding="utf-8-sig")
