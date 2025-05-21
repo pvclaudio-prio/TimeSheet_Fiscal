@@ -1,29 +1,10 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
-from io import BytesIO
-from pathlib import Path
-import os
+import tempfile
+from datetime import datetime
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
-import zipfile
-import tempfile
-import json
 from oauth2client.client import OAuth2Credentials
-import httplib2
-import traceback
-import openai
-import json
-import httpx
-from sentence_transformers import SentenceTransformer, util
-from openai import OpenAI
-import json
-import requests
-import tempfile
-from difflib import get_close_matches
-import re
-from datetime import timedelta
-import matplotlib.pyplot as plt
 
 
 st.set_page_config(page_title="Timesheet Fiscal", layout="wide")
