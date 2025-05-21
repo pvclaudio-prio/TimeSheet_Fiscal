@@ -496,6 +496,9 @@ elif menu == "📝 Lançamento de Timesheet":
 elif menu == "📄 Visualizar / Editar Timesheet":
     st.title("📄 Visualizar, Editar ou Excluir Timesheet")
 
+    usuario_logado = st.session_state.username
+    nome_usuario = users[usuario_logado]["name"]
+
     # 🔸 Carregar Dados
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
@@ -541,8 +544,8 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     # Filtro de usuário (apenas admins veem)
     if usuario_logado in admin_users:
         usuario = st.sidebar.selectbox(
-            "Usuário:",
-            ["Todos"] + sorted(df_timesheet["Usuário"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todos"]
+            "Nome:",
+            ["Todos"] + sorted(df_timesheet["Nome"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todos"]
         )
     else:
         usuario = usuario_logado
@@ -560,7 +563,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
         df_filtrado = df_filtrado[df_filtrado["Atividade"] == atividade]
     
     if usuario != "Todos":
-        df_filtrado = df_filtrado[df_filtrado["Usuário"] == usuario]
+        df_filtrado = df_filtrado[df_filtrado["Nome"] == usuario]
     
     df_filtrado = df_filtrado[
         (df_filtrado["Data"].dt.date >= data_inicial) &
