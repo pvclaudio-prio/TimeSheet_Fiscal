@@ -212,7 +212,6 @@ if menu == "🏠 Dashboard":
 elif menu == "🏢 Cadastro de Empresas":
     st.title("🏢 Cadastro de Empresas (Códigos SAP)")
     st.subheader("📥 Inserir nova empresa")
-    st.markdown("### ➕ Adicionar Nova Empresa")
 
     with st.form("form_empresa"):
         col1, col2 = st.columns([2, 4])
