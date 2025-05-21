@@ -257,7 +257,7 @@ if menu == "🏠 Dashboard":
     
     projeto = st.sidebar.selectbox(
         "Projeto:",
-        ["Todas"] + sorted(df_timesheet["Projeto"].dropna().unique().tolist())
+        ["Todos"] + sorted(df_timesheet["Projeto"].dropna().unique().tolist())
     )
     
     # Aplicar filtros
@@ -269,7 +269,7 @@ if menu == "🏠 Dashboard":
     if empresa != "Todas":
         df_filtrado = df_filtrado[df_filtrado["Empresa"] == empresa]
     
-    if projeto != "Todas":
+    if projeto != "Todos":
         df_filtrado = df_filtrado[df_filtrado["Projeto"] == projeto]
     
     # 🚀 KPIs
