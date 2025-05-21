@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import tempfile
-from datetime import datetime
+from datetime import datetime, date
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 from oauth2client.client import OAuth2Credentials
@@ -426,7 +426,63 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
 
 elif menu == "📝 Lançamento de Timesheet":
     st.title("📝 Lançamento de Timesheet")
-    st.info("Em construção...")
+    st.subheader("📝 Lançamento de Timesheet")
+
+    # 🔸 Carregar Bases
+    df_empresas = carregar_arquivo("empresas.csv", ["Codigo SAP", "Nome Empresa", "Descrição"])
+    df_projetos = carregar_arquivo("projetos.csv", ["Nome Projeto", "Descrição", "Status"])
+    df_atividades = carregar_arquivo("atividades.csv", ["Nome Atividade", "Projeto Vinculado", "Descrição", "Status"])
+    df_timesheet = carregar_arquivo(
+        "timesheet.csv",
+        ["Usuário", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+    )
+    
+    # 🔸 Formulário de Lançamento
+    with st.form("form_timesheet"):
+        data = st.date_input("Data", value=date.today())
+    
+        empresa = st.selectbox(
+            "Empresa (Código SAP)",
+            df_empresas["Codigo SAP"] if not df_empresas.empty else ["Sem empresas cadastradas"]
+        )
+    
+        projeto = st.selectbox(
+            "Projeto",
+            df_projetos["Nome Projeto"] if not df_projetos.empty else ["Sem projetos cadastrados"]
+        )
+    
+        atividades_filtradas = df_atividades[df_atividades["Projeto Vinculado"] == projeto]
+    
+        atividade = st.selectbox(
+            "Atividade",
+            atividades_filtradas["Nome Atividade"] if not atividades_filtradas.empty else ["Sem atividades para este projeto"]
+        )
+    
+        quantidade = st.number_input("Quantidade (opcional)", min_value=0, step=1)
+    
+        horas = st.text_input("Horas Gastas (formato HH:MM)")
+    
+        observacoes = st.text_area("Observações", placeholder="Descreva detalhes relevantes sobre este lançamento...")
+    
+        submitted = st.form_submit_button("💾 Registrar")
+    
+        if submitted:
+            if not horas.strip():
+                st.warning("⚠️ O campo Horas Gastas é obrigatório no formato HH:MM.")
+            else:
+                novo = pd.DataFrame({
+                    "Usuário": [st.session_state.username],
+                    "Data": [data.strftime("%Y-%m-%d")],
+                    "Empresa": [empresa],
+                    "Projeto": [projeto],
+                    "Atividade": [atividade],
+                    "Quantidade": [quantidade],
+                    "Horas Gastas": [horas.strip()],
+                    "Observações": [observacoes.strip()]
+                })
+                df_timesheet = pd.concat([df_timesheet, novo], ignore_index=True)
+                salvar_arquivo(df_timesheet, "timesheet.csv")
+                st.success("✅ Registro salvo no Timesheet com sucesso!")
 
 # -----------------------------
 # Menu Visualizar TS
