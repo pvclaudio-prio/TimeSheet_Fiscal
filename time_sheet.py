@@ -9,7 +9,51 @@ from datetime import datetime
 
 st.set_page_config(page_title="Timesheet Fiscal", layout="wide")
 st.write("Hoje:", pd.Timestamp.today())
-st.sidebar.image("PRIO_SEM_POLVO_PRIO_PANTONE_LOGOTIPO_Azul.png",use_column_width=True)
+
+# -----------------------------
+# Validação Usuários
+# -----------------------------
+
+@st.cache_data
+def carregar_usuarios():
+    usuarios_config = st.secrets.get("users", {})
+    usuarios = {}
+    for user, dados in usuarios_config.items():
+        try:
+            nome, senha = dados.split("|", 1)
+            usuarios[user] = {"name": nome, "password": senha}
+        except:
+            st.warning(f"Erro ao carregar usuário '{user}' nos secrets.")
+    return usuarios
+
+users = carregar_usuarios()
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+
+if not st.session_state.logged_in:
+    st.title("🔐 Login")
+    username = st.text_input("Usuário")
+    password = st.text_input("Senha", type="password")
+    if st.button("Entrar"):
+        user = users.get(username)
+        if user and user["password"] == password:
+            st.session_state.logged_in = True
+            st.session_state.username = username
+            st.success(f"Bem-vindo, {user['name']}!")
+            st.rerun()
+        else:
+            st.error("Usuário ou senha incorretos.")
+    st.stop()
+
+st.sidebar.image("PRIO_SEM_POLVO_PRIO_PANTONE_LOGOTIPO_Azul.png")
+nome_usuario = users[st.session_state.username]["name"]
+st.sidebar.success(f"Logado como: {nome_usuario}")
+if st.sidebar.button("Logout"):
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+    st.rerun()
 
 
 # -----------------------------
