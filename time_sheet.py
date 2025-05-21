@@ -60,7 +60,7 @@ if st.sidebar.button("Logout"):
     st.session_state.username = ""
     st.rerun()
     
-admin_users = ["cvieira", "mathayde", "amendonca"]
+admin_users = ["cvieira", "wreis", "waraujo", "iassis"]
 
 # -----------------------------
 # Funções Auxiliares
