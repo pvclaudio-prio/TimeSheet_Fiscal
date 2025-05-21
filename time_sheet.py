@@ -10,6 +10,7 @@ from openai import OpenAI
 from io import BytesIO
 from docx import Document
 from docx.shared import Pt
+import plotly.express as px
 
 st.set_page_config(page_title="Timesheet Fiscal", layout="wide")
 st.write("Hoje:", pd.Timestamp.today())
@@ -217,7 +218,145 @@ menu = st.sidebar.radio("Navegar para:", [
 
 if menu == "🏠 Dashboard":
     st.title("📊 Painel de KPIs do Timesheet")
-    st.info("Em construção...")
+    # =============================
+    # 🔗 Carregar Dados
+    # =============================
+    st.subheader("📊 Dashboard de Timesheet")
+    
+    df_timesheet = carregar_arquivo(
+        "timesheet.csv",
+        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+    )
+    
+    if df_timesheet.empty:
+        st.info("⚠️ Não há dados no timesheet para gerar dashboard.")
+        st.stop()
+    
+    # Tratamento de datas
+    df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors="coerce")
+    
+    # =============================
+    # 🔢 Conversão de Horas
+    # =============================
+    def converter_para_horas(horas_str):
+        try:
+            h, m = map(int, horas_str.strip().split(":"))
+            return h + m / 60
+        except:
+            return 0
+    
+    df_timesheet["Horas"] = df_timesheet["Horas Gastas"].apply(converter_para_horas)
+    
+    # =============================
+    # 🔍 Filtros
+    # =============================
+    st.sidebar.subheader("🔍 Filtros")
+    
+    data_inicial, data_final = st.sidebar.date_input(
+        "Período:",
+        [df_timesheet["Data"].min().date(), df_timesheet["Data"].max().date()]
+    )
+    
+    empresa = st.sidebar.selectbox(
+        "Empresa:",
+        ["Todas"] + sorted(df_timesheet["Empresa"].dropna().unique().tolist())
+    )
+    
+    projeto = st.sidebar.selectbox(
+        "Projeto:",
+        ["Todas"] + sorted(df_timesheet["Projeto"].dropna().unique().tolist())
+    )
+    
+    # Aplicar filtros
+    df_filtrado = df_timesheet[
+        (df_timesheet["Data"].dt.date >= data_inicial) &
+        (df_timesheet["Data"].dt.date <= data_final)
+    ]
+    
+    if empresa != "Todas":
+        df_filtrado = df_filtrado[df_filtrado["Empresa"] == empresa]
+    
+    if projeto != "Todas":
+        df_filtrado = df_filtrado[df_filtrado["Projeto"] == projeto]
+    
+    # =============================
+    # 🚀 KPIs
+    # =============================
+    total_horas = df_filtrado["Horas"].sum()
+    total_registros = len(df_filtrado)
+    total_colaboradores = df_filtrado["Nome"].nunique()
+    total_projetos = df_filtrado["Projeto"].nunique()
+    
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("⏰ Total de Horas", f"{total_horas:.2f}")
+    col2.metric("📄 Total Registros", total_registros)
+    col3.metric("👤 Colaboradores", total_colaboradores)
+    col4.metric("🏗️ Projetos", total_projetos)
+    
+    # =============================
+    # 📊 Gráficos
+    # =============================
+    
+    # 🔸 Horas por Projeto
+    st.subheader("🏗️ Horas por Projeto")
+    if not df_filtrado.empty:
+        grafico_projeto = df_filtrado.groupby("Projeto")["Horas"].sum().reset_index()
+        fig = px.bar(
+            grafico_projeto,
+            x="Projeto",
+            y="Horas",
+            title="Horas Gastas por Projeto",
+            text_auto='.2s'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # 🔸 Horas por Atividade
+    st.subheader("🗒️ Horas por Atividade")
+    grafico_atividade = df_filtrado.groupby("Atividade")["Horas"].sum().reset_index()
+    fig = px.bar(
+        grafico_atividade,
+        x="Atividade",
+        y="Horas",
+        title="Horas Gastas por Atividade",
+        text_auto='.2s'
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # 🔸 Horas por Empresa
+    st.subheader("🏢 Horas por Empresa")
+    grafico_empresa = df_filtrado.groupby("Empresa")["Horas"].sum().reset_index()
+    fig = px.pie(
+        grafico_empresa,
+        names="Empresa",
+        values="Horas",
+        title="Distribuição de Horas por Empresa",
+        hole=0.4
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # 🔸 Horas por Colaborador
+    st.subheader("👤 Horas por Colaborador")
+    grafico_colab = df_filtrado.groupby("Nome")["Horas"].sum().reset_index()
+    fig = px.bar(
+        grafico_colab,
+        x="Nome",
+        y="Horas",
+        title="Horas Gastas por Colaborador",
+        text_auto='.2s'
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # 🔸 Evolução Temporal
+    st.subheader("📅 Evolução de Horas no Tempo")
+    grafico_tempo = df_filtrado.groupby("Data")["Horas"].sum().reset_index()
+    fig = px.line(
+        grafico_tempo,
+        x="Data",
+        y="Horas",
+        title="Evolução de Horas no Tempo",
+        markers=True
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 # -----------------------------
 # Menu Cadastro de Empresa
