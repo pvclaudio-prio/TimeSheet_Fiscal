@@ -643,7 +643,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     # 🔸 Carregar Dados
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
-        ["Usuário", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
     
     # 🔧 Tratamento de datas
@@ -725,7 +725,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
         linha = df_filtrado.loc[indice]
     
         col_editar = st.selectbox("Coluna:", [
-            "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"
+            "Data", "Nome", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"
         ])
     
         valor_atual = linha[col_editar]
