@@ -494,7 +494,131 @@ elif menu == "📝 Lançamento de Timesheet":
 
 elif menu == "📄 Visualizar / Editar Timesheet":
     st.title("📄 Visualizar, Editar ou Excluir Timesheet")
-    st.info("Em construção...")
+    st.subheader("📄 Visualizar, Editar e Excluir Timesheet")
+
+    # 🔸 Carregar Dados
+    df_timesheet = carregar_arquivo(
+        "timesheet.csv",
+        ["Usuário", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+    )
+    
+    # Convertendo Data para datetime
+    if not df_timesheet.empty:
+        df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors="coerce")
+    
+    # 🔸 Filtros
+    st.sidebar.subheader("🔍 Filtros")
+    
+    data_inicial, data_final = st.sidebar.date_input(
+        "Período:",
+        [df_timesheet["Data"].min().date() if not df_timesheet.empty else date.today(),
+         df_timesheet["Data"].max().date() if not df_timesheet.empty else date.today()]
+    )
+    
+    empresa = st.sidebar.selectbox(
+        "Empresa:",
+        ["Todas"] + sorted(df_timesheet["Empresa"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todas"]
+    )
+    
+    projeto = st.sidebar.selectbox(
+        "Projeto:",
+        ["Todas"] + sorted(df_timesheet["Projeto"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todas"]
+    )
+    
+    atividade = st.sidebar.selectbox(
+        "Atividade:",
+        ["Todas"] + sorted(df_timesheet["Atividade"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todas"]
+    )
+    
+    usuario = st.sidebar.selectbox(
+        "Usuário:",
+        ["Todos"] + sorted(df_timesheet["Usuário"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todos"]
+    )
+    
+    # 🔸 Aplicando Filtros
+    df_filtrado = df_timesheet.copy()
+    
+    if empresa != "Todas":
+        df_filtrado = df_filtrado[df_filtrado["Empresa"] == empresa]
+    
+    if projeto != "Todas":
+        df_filtrado = df_filtrado[df_filtrado["Projeto"] == projeto]
+    
+    if atividade != "Todas":
+        df_filtrado = df_filtrado[df_filtrado["Atividade"] == atividade]
+    
+    if usuario != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["Usuário"] == usuario]
+    
+    df_filtrado = df_filtrado[
+        (df_filtrado["Data"].dt.date >= data_inicial) &
+        (df_filtrado["Data"].dt.date <= data_final)
+    ].sort_values(by="Data")
+    
+    # 🔸 Visualização
+    st.markdown(f"### 🔍 {len(df_filtrado)} registros encontrados")
+    st.dataframe(df_filtrado, use_container_width=True)
+    
+    # 🔸 Edição de Registros
+    st.markdown("---")
+    st.subheader("✏️ Editar um Registro")
+    
+    if not df_filtrado.empty:
+        indice = st.selectbox("Selecione o índice do registro:", df_filtrado.index.tolist())
+    
+        linha = df_filtrado.loc[indice]
+    
+        col_editar = st.selectbox("Selecione a coluna para editar:", [
+            "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"
+        ])
+    
+        valor_atual = linha[col_editar]
+        if col_editar == "Data":
+            novo_valor = st.date_input("Nova Data", value=valor_atual.date() if pd.notnull(valor_atual) else date.today())
+            novo_valor = pd.to_datetime(novo_valor)
+        elif col_editar == "Quantidade":
+            novo_valor = st.number_input("Nova Quantidade", value=int(valor_atual) if pd.notnull(valor_atual) else 0)
+        else:
+            novo_valor = st.text_input("Novo Valor", value=str(valor_atual) if pd.notnull(valor_atual) else "")
+    
+        if st.button("💾 Atualizar Registro"):
+            df_timesheet.at[indice, col_editar] = novo_valor
+            salvar_arquivo(df_timesheet, "timesheet.csv")
+            st.success(f"✅ Registro atualizado com sucesso!")
+            st.experimental_rerun()
+    
+    # 🔸 Exclusão
+    st.markdown("---")
+    st.subheader("🗑️ Excluir um Registro")
+    
+    if not df_filtrado.empty:
+        indice_excluir = st.selectbox("Selecione o índice para excluir:", df_filtrado.index.tolist(), key="excluir")
+    
+        linha = df_filtrado.loc[indice_excluir]
+        st.markdown(f"**Registro selecionado:**")
+        st.json(linha.to_dict())
+    
+        confirmar = st.radio("⚠️ Tem certeza que deseja excluir?", ["Não", "Sim"], horizontal=True, key="confirmar_excluir")
+    
+        if confirmar == "Sim":
+            if st.button("🗑️ Confirmar Exclusão"):
+                df_timesheet = df_timesheet.drop(index=indice_excluir)
+                salvar_arquivo(df_timesheet, "timesheet.csv")
+                st.success("✅ Registro excluído com sucesso!")
+                st.experimental_rerun()
+    
+    # 🔸 Exportação
+    st.markdown("---")
+    st.subheader("📥 Exportar Dados")
+    
+    buffer = df_filtrado.to_csv(index=False, sep=";", encoding="utf-8-sig").encode()
+    
+    st.download_button(
+        label="📥 Baixar CSV Filtrado",
+        data=buffer,
+        file_name="timesheet_filtrado.csv",
+        mime="text/csv"
+    )
 
 # -----------------------------
 # Menu Performance
