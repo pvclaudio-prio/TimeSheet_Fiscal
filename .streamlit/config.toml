@@ -1,7 +1,6 @@
-fig.update_layout(
-    plot_bgcolor="#f8f9fa",
-    paper_bgcolor="#f8f9fa",
-    font_color="#212529",
-    title_font_color="#003f5c",
-    legend_bgcolor="#e1e5ea"
-)
+[theme]
+primaryColor = "#003f5c"
+backgroundColor = "#f8f9fa"
+secondaryBackgroundColor = "#e1e5ea"
+textColor = "#212529"
+font = "sans serif"
