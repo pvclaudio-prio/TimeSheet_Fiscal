@@ -220,8 +220,6 @@ if menu == "🏠 Dashboard":
     st.title("📊 Painel de KPIs do Timesheet")
 
     # 🔗 Carregar Dados
-    st.subheader("📊 Dashboard de Timesheet")
-    
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
         ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
