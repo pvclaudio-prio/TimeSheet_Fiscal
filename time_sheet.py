@@ -674,7 +674,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     
     projeto = st.sidebar.selectbox(
         "Projeto:",
-        ["Todas"] + sorted(df_timesheet["Projeto"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todas"]
+        ["Todos"] + sorted(df_timesheet["Projeto"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todas"]
     )
     
     atividade = st.sidebar.selectbox(
@@ -697,7 +697,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     if empresa != "Todas":
         df_filtrado = df_filtrado[df_filtrado["Empresa"] == empresa]
     
-    if projeto != "Todas":
+    if projeto != "Todos":
         df_filtrado = df_filtrado[df_filtrado["Projeto"] == projeto]
     
     if atividade != "Todas":
