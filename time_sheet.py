@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import datetime, date
 from io import BytesIO
 from pathlib import Path
-import plotly.express as px
 import os
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
