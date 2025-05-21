@@ -6,6 +6,10 @@ from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 from oauth2client.client import OAuth2Credentials
 import httplib2
+import openai
+from io import BytesIO
+from docx import Document
+from docx.shared import Pt
 
 st.set_page_config(page_title="Timesheet Fiscal", layout="wide")
 st.write("Hoje:", pd.Timestamp.today())
@@ -641,7 +645,121 @@ elif menu == "📄 Visualizar / Editar Timesheet":
 
 elif menu == "📊 Avaliação de Performance — IA":
     st.title("📊 Avaliação de Performance com IA")
-    st.info("Em construção...")
+    # =============================
+# 🔑 API OpenAI
+# =============================
+openai.api_key = st.secrets["openai"]["api_key"]
+
+
+# =============================
+# 🔗 Carregar Dados
+# =============================
+st.subheader("📊 Avaliação de Performance — IA")
+
+df_timesheet = carregar_arquivo(
+    "timesheet.csv",
+    ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+)
+
+if df_timesheet.empty:
+    st.info("⚠️ Não há dados no timesheet para avaliar.")
+    st.stop()
+
+# Tratamento de datas
+df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors="coerce")
+
+# =============================
+# 🔍 Prompt para GPT
+# =============================
+st.markdown("### 🔧 Configuração da Avaliação")
+
+periodo_inicio, periodo_fim = st.date_input(
+    "Período da análise:",
+    [df_timesheet["Data"].min().date(), df_timesheet["Data"].max().date()]
+)
+
+df_filtrado = df_timesheet[
+    (df_timesheet["Data"].dt.date >= periodo_inicio) &
+    (df_timesheet["Data"].dt.date <= periodo_fim)
+]
+
+if df_filtrado.empty:
+    st.info("⚠️ Nenhum registro encontrado para o período selecionado.")
+    st.stop()
+
+    # 🔥 Geração do Relatório
+    st.markdown("### 🤖 Gerando relatório com IA")
+    
+    dados_markdown = df_filtrado.fillna("").astype(str).to_markdown(index=False)
+    
+    prompt = f"""
+    Você é um consultor especialista em gestão de tempo, produtividade e análise de performance.
+    
+    Analise os dados do timesheet abaixo e gere um relatório completo e estruturado contendo:
+    - ✅ Resumo executivo
+    - ✅ Principais indicadores
+    - ✅ Gargalos e desvios
+    - ✅ Recomendações de melhorias operacionais
+    - ✅ Conclusões finais
+    
+    Seja objetivo, técnico e claro. Utilize contagens, percentuais e análises de tendência.
+    
+    ### Dados do Timesheet:
+    {dados_markdown}
+    """
+    
+    if st.button("🚀 Gerar Relatório de Performance"):
+        with st.spinner("A IA está gerando o relatório..."):
+            resposta = openai.ChatCompletion.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "Você é um especialista em análise de dados e produtividade corporativa."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2
+            )
+    
+            texto_relatorio = resposta.choices[0].message["content"]
+    
+            st.success("✅ Relatório gerado com sucesso!")
+            st.markdown("### 📄 Relatório Gerado:")
+            st.markdown(texto_relatorio)
+    
+            # =============================
+            # 📄 Gerar Arquivo .docx
+            # =============================
+            doc = Document()
+    
+            # Estilo
+            style = doc.styles["Normal"]
+            font = style.font
+            font.name = 'Arial'
+            font.size = Pt(11)
+    
+            doc.add_heading("📊 Relatório de Avaliação de Performance", level=1)
+            doc.add_paragraph(f"Período: {periodo_inicio} a {periodo_fim}")
+            doc.add_paragraph(f"Data da geração: {datetime.today().strftime('%Y-%m-%d')}")
+    
+            doc.add_paragraph("\n")
+    
+            for linha in texto_relatorio.split("\n"):
+                if linha.strip().startswith("#"):
+                    nivel = linha.count("#")
+                    texto = linha.replace("#", "").strip()
+                    doc.add_heading(texto, level=min(nivel, 4))
+                else:
+                    doc.add_paragraph(linha.strip())
+    
+            buffer = BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
+    
+            st.download_button(
+                label="📥 Baixar Relatório em Word",
+                data=buffer,
+                file_name="relatorio_performance.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
 
 
 
