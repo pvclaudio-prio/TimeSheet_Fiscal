@@ -428,6 +428,9 @@ elif menu == "📝 Lançamento de Timesheet":
     st.title("📝 Lançamento de Timesheet")
     st.subheader("⏱️ Registro de Horas")
 
+    usuario_logado = st.session_state.username
+    nome_usuario = users[usuario_logado]["name"]
+
     # 🔸 Carregar Bases
     df_empresas = carregar_arquivo("empresas.csv", ["Codigo SAP", "Nome Empresa", "Descrição"])
     df_projetos = carregar_arquivo("projetos.csv", ["Nome Projeto", "Descrição", "Status"])
@@ -471,7 +474,8 @@ elif menu == "📝 Lançamento de Timesheet":
                 st.warning("⚠️ O campo Horas Gastas é obrigatório no formato HH:MM.")
             else:
                 novo = pd.DataFrame({
-                    "Usuário": [st.session_state.username],
+                    "Usuário": [usuario_logado],
+                    "Nome":[nome_usuario],
                     "Data": [data.strftime("%Y-%m-%d")],
                     "Empresa": [empresa],
                     "Projeto": [projeto],
