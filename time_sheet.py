@@ -54,7 +54,8 @@ if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.rerun()
-
+    
+admin_users = ["cvieira", "mathayde", "amendonca"]
 
 # -----------------------------
 # Funções Auxiliares
@@ -499,20 +500,28 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     # 🔸 Carregar Dados
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
-        ["Usuário","Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+        ["Usuário", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
     
-    # Convertendo Data para datetime
+    # 🔧 Tratamento de datas
     if not df_timesheet.empty:
         df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors="coerce")
     
-    # 🔸 Filtros
+    # 🔐 Filtrar por usuário logado
+    usuario_logado = st.session_state.username
+    
+    if usuario_logado not in admin_users:
+        df_timesheet = df_timesheet[df_timesheet["Usuário"] == usuario_logado]
+    
+    # 🔍 Filtros
     st.sidebar.subheader("🔍 Filtros")
     
     data_inicial, data_final = st.sidebar.date_input(
         "Período:",
-        [df_timesheet["Data"].min().date() if not df_timesheet.empty else date.today(),
-         df_timesheet["Data"].max().date() if not df_timesheet.empty else date.today()]
+        [
+            df_timesheet["Data"].min().date() if not df_timesheet.empty else date.today(),
+            df_timesheet["Data"].max().date() if not df_timesheet.empty else date.today()
+        ]
     )
     
     empresa = st.sidebar.selectbox(
@@ -530,12 +539,16 @@ elif menu == "📄 Visualizar / Editar Timesheet":
         ["Todas"] + sorted(df_timesheet["Atividade"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todas"]
     )
     
-    usuario = st.sidebar.selectbox(
-        "Usuário:",
-        ["Todos"] + sorted(df_timesheet["Usuário"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todos"]
-    )
+    # Filtro de usuário (apenas admins veem)
+    if usuario_logado in admin_users:
+        usuario = st.sidebar.selectbox(
+            "Usuário:",
+            ["Todos"] + sorted(df_timesheet["Usuário"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todos"]
+        )
+    else:
+        usuario = usuario_logado
     
-    # 🔸 Aplicando Filtros
+    # 🔸 Aplicando filtros
     df_filtrado = df_timesheet.copy()
     
     if empresa != "Todas":
@@ -559,16 +572,16 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     st.markdown(f"### 🔍 {len(df_filtrado)} registros encontrados")
     st.dataframe(df_filtrado, use_container_width=True)
     
-    # 🔸 Edição de Registros
+    # 🔸 Edição
     st.markdown("---")
     st.subheader("✏️ Editar um Registro")
     
     if not df_filtrado.empty:
-        indice = st.selectbox("Selecione o índice do registro:", df_filtrado.index.tolist())
+        indice = st.selectbox("Selecione o índice para editar:", df_filtrado.index.tolist())
     
         linha = df_filtrado.loc[indice]
     
-        col_editar = st.selectbox("Selecione a coluna para editar:", [
+        col_editar = st.selectbox("Coluna:", [
             "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"
         ])
     
@@ -592,13 +605,13 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     st.subheader("🗑️ Excluir um Registro")
     
     if not df_filtrado.empty:
-        indice_excluir = st.selectbox("Selecione o índice para excluir:", df_filtrado.index.tolist(), key="excluir")
+        indice_excluir = st.selectbox("Índice para excluir:", df_filtrado.index.tolist(), key="excluir")
     
         linha = df_filtrado.loc[indice_excluir]
-        st.markdown(f"**Registro selecionado:**")
+        st.markdown("**Registro selecionado:**")
         st.json(linha.to_dict())
     
-        confirmar = st.radio("⚠️ Tem certeza que deseja excluir?", ["Não", "Sim"], horizontal=True, key="confirmar_excluir")
+        confirmar = st.radio("⚠️ Confirmar Exclusão?", ["Não", "Sim"], horizontal=True, key="confirmar_excluir")
     
         if confirmar == "Sim":
             if st.button("🗑️ Confirmar Exclusão"):
