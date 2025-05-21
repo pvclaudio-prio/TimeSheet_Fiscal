@@ -495,7 +495,6 @@ elif menu == "📝 Lançamento de Timesheet":
 
 elif menu == "📄 Visualizar / Editar Timesheet":
     st.title("📄 Visualizar, Editar ou Excluir Timesheet")
-    st.subheader("📄 Visualizar, Editar e Excluir Timesheet")
 
     # 🔸 Carregar Dados
     df_timesheet = carregar_arquivo(
