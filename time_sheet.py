@@ -337,16 +337,27 @@ if menu == "🏠 Dashboard":
     )
     st.plotly_chart(fig, use_container_width=True)
     
-    # 🔸 Evolução Temporal
-    st.subheader("📅 Evolução de Horas no Tempo")
-    grafico_tempo = df_filtrado.groupby("Data")["Horas"].sum().reset_index()
+    # 🔸 Evolução Temporal (Somente por dia, sem horas)
+    st.subheader("📅 Evolução de Horas no Tempo (Por Dia)")
+    
+    grafico_tempo = df_filtrado.groupby(df_filtrado["Data"].dt.date)["Horas"].sum().reset_index()
+    grafico_tempo.rename(columns={"Data": "Dia"}, inplace=True)
+    
     fig = px.line(
         grafico_tempo,
-        x="Data",
+        x="Dia",
         y="Horas",
         title=None,
         markers=True
     )
+    
+    fig.update_xaxes(
+        type='category',
+        title="Data"
+    )
+    
+    fig.update_yaxes(title="Horas")
+    
     st.plotly_chart(fig, use_container_width=True)
 
 # -----------------------------
