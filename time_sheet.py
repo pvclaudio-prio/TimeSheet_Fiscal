@@ -308,7 +308,7 @@ if menu == "🏠 Dashboard":
         grafico_atividade,
         x="Atividade",
         y="Horas",
-        title="Horas Gastas por Atividade",
+        title=None,
         text_auto='.2s'
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -320,7 +320,7 @@ if menu == "🏠 Dashboard":
         grafico_empresa,
         names="Empresa",
         values="Horas",
-        title="Distribuição de Horas por Empresa",
+        title=None,
         hole=0.4
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -332,7 +332,7 @@ if menu == "🏠 Dashboard":
         grafico_colab,
         x="Nome",
         y="Horas",
-        title="Horas Gastas por Colaborador",
+        title=None,
         text_auto='.2s'
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -344,7 +344,7 @@ if menu == "🏠 Dashboard":
         grafico_tempo,
         x="Data",
         y="Horas",
-        title="Evolução de Horas no Tempo",
+        title=None,
         markers=True
     )
     st.plotly_chart(fig, use_container_width=True)
