@@ -200,7 +200,7 @@ def salvar_empresas(df):
 # Menu Latereal
 # -----------------------------
 
-st.sidebar.title("📋 Menu Timesheet Fiscal")
+st.sidebar.title("📋 Menu")
 
 menu = st.sidebar.radio("Navegar para:", [
     "🏠 Dashboard",
