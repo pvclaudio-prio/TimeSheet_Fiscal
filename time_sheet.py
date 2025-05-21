@@ -5,7 +5,7 @@ from datetime import datetime
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 from oauth2client.client import OAuth2Credentials
-
+import httplib2
 
 st.set_page_config(page_title="Timesheet Fiscal", layout="wide")
 st.write("Hoje:", pd.Timestamp.today())
@@ -72,8 +72,10 @@ def conectar_drive():
         user_agent="streamlit-app/1.0",
         revoke_uri=cred_dict["revoke_uri"]
     )
+    
     if credentials.access_token_expired:
-        credentials.refresh()
+        credentials.refresh(httplib2.Http())  # ✅ Correção aqui
+
     gauth = GoogleAuth()
     gauth.credentials = credentials
     drive = GoogleDrive(gauth)
