@@ -600,11 +600,9 @@ elif menu == "📝 Lançamento de Timesheet":
             df_projetos["Nome Projeto"] if not df_projetos.empty else ["Sem projetos cadastrados"]
         )
     
-        atividades_filtradas = df_atividades[df_atividades["Projeto Vinculado"] == projeto]
-    
         atividade = st.selectbox(
             "Atividade",
-            atividades_filtradas["Nome Atividade"] if not atividades_filtradas.empty else ["Sem atividades para este projeto"]
+            df_atividades["Nome Atividade"] if not df_atividades.empty else ["Sem atividades para este projeto"]
         )
     
         quantidade = st.number_input("Quantidade Horas", min_value=0, step=1)
