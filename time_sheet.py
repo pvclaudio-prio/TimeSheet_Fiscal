@@ -6,7 +6,7 @@ from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 from oauth2client.client import OAuth2Credentials
 import httplib2
-import openai
+from openai import OpenAI
 from io import BytesIO
 from docx import Document
 from docx.shared import Pt
@@ -647,11 +647,6 @@ elif menu == "📊 Avaliação de Performance — IA":
     st.title("📊 Avaliação de Performance com IA")
 
     # =============================
-    # 🔑 API OpenAI
-    # =============================
-    openai.api_key = st.secrets["openai"]["api_key"]
-    
-    # =============================
     # 🔐 Definir admins
     # =============================
     admin_users = ["cvieira", "mathayde", "amendonca"]
@@ -704,6 +699,11 @@ elif menu == "📊 Avaliação de Performance — IA":
         st.stop()
     
     # =============================
+    # 🤖 Cliente OpenAI
+    # =============================
+    client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+    
+    # =============================
     # 🔥 Geração do Relatório
     # =============================
     st.markdown("### 🤖 Gerando relatório com IA")
@@ -728,16 +728,16 @@ elif menu == "📊 Avaliação de Performance — IA":
     
     if st.button("🚀 Gerar Relatório de Performance"):
         with st.spinner("A IA está gerando o relatório..."):
-            resposta = openai.ChatCompletion.create(
+            resposta = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "Você é um especialista em análise de dados e produtividade corporativa."},
+                    {"role": "system", "content": "Você é um especialista em análise de produtividade corporativa e performance."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.2
             )
     
-            texto_relatorio = resposta.choices[0].message["content"]
+            texto_relatorio = resposta.choices[0].message.content
     
             st.success("✅ Relatório gerado com sucesso!")
             st.markdown("### 📄 Relatório Gerado:")
@@ -755,6 +755,7 @@ elif menu == "📊 Avaliação de Performance — IA":
             font.size = Pt(11)
     
             doc.add_heading("📊 Relatório de Avaliação de Performance", level=1)
+    
             if projeto_escolhido == "Todos os Projetos":
                 doc.add_paragraph("Projeto: Todos os Projetos")
             else:
