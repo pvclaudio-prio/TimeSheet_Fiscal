@@ -218,9 +218,8 @@ menu = st.sidebar.radio("Navegar para:", [
 
 if menu == "🏠 Dashboard":
     st.title("📊 Painel de KPIs do Timesheet")
-    # =============================
+
     # 🔗 Carregar Dados
-    # =============================
     st.subheader("📊 Dashboard de Timesheet")
     
     df_timesheet = carregar_arquivo(
@@ -235,9 +234,7 @@ if menu == "🏠 Dashboard":
     # Tratamento de datas
     df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors="coerce")
     
-    # =============================
     # 🔢 Conversão de Horas
-    # =============================
     def converter_para_horas(horas_str):
         try:
             h, m = map(int, horas_str.strip().split(":"))
@@ -247,9 +244,7 @@ if menu == "🏠 Dashboard":
     
     df_timesheet["Horas"] = df_timesheet["Horas Gastas"].apply(converter_para_horas)
     
-    # =============================
     # 🔍 Filtros
-    # =============================
     st.sidebar.subheader("🔍 Filtros")
     
     data_inicial, data_final = st.sidebar.date_input(
@@ -279,9 +274,7 @@ if menu == "🏠 Dashboard":
     if projeto != "Todas":
         df_filtrado = df_filtrado[df_filtrado["Projeto"] == projeto]
     
-    # =============================
     # 🚀 KPIs
-    # =============================
     total_horas = df_filtrado["Horas"].sum()
     total_registros = len(df_filtrado)
     total_colaboradores = df_filtrado["Nome"].nunique()
@@ -293,9 +286,7 @@ if menu == "🏠 Dashboard":
     col3.metric("👤 Colaboradores", total_colaboradores)
     col4.metric("🏗️ Projetos", total_projetos)
     
-    # =============================
     # 📊 Gráficos
-    # =============================
     
     # 🔸 Horas por Projeto
     st.subheader("🏗️ Horas por Projeto")
@@ -305,7 +296,7 @@ if menu == "🏠 Dashboard":
             grafico_projeto,
             x="Projeto",
             y="Horas",
-            title="Horas Gastas por Projeto",
+            title=None,
             text_auto='.2s'
         )
         st.plotly_chart(fig, use_container_width=True)
