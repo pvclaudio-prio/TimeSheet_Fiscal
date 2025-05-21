@@ -605,7 +605,7 @@ elif menu == "📝 Lançamento de Timesheet":
             df_atividades["Nome Atividade"] if not df_atividades.empty else ["Sem atividades para este projeto"]
         )
     
-        quantidade = st.number_input("Quantidade Horas", min_value=0, step=1)
+        quantidade = st.number_input("Quantidade Tarefas", min_value=0, step=1)
     
         horas = st.text_input("Horas Gastas (formato HH.MM)")
     
