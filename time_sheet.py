@@ -149,6 +149,7 @@ menu = st.sidebar.radio("Navegar para:", [
 
 if menu == "🏠 Dashboard":
     st.title("📊 Painel de KPIs do Timesheet")
+    st.info("Em construção...")
 
 # -----------------------------
 # Menu Cadastro de Empresa
@@ -220,7 +221,7 @@ elif menu == "🏢 Cadastro de Empresas":
 
 elif menu == "🗂️ Cadastro de Projetos e Atividades":
     st.title("🗂️ Cadastro de Projetos e Atividades")
-    # <- Código da aba de projetos e atividades
+    st.info("Em construção...")
 
 # -----------------------------
 # Menu Lançamento TS
@@ -228,7 +229,7 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
 
 elif menu == "📝 Lançamento de Timesheet":
     st.title("📝 Lançamento de Timesheet")
-    # <- Código da aba de lançamento do timesheet
+    st.info("Em construção...")
 
 # -----------------------------
 # Menu Visualizar TS
@@ -236,7 +237,7 @@ elif menu == "📝 Lançamento de Timesheet":
 
 elif menu == "📄 Visualizar / Editar Timesheet":
     st.title("📄 Visualizar, Editar ou Excluir Timesheet")
-    # <- Código da aba de edição e exclusão
+    st.info("Em construção...")
 
 # -----------------------------
 # Menu Performance
@@ -244,7 +245,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
 
 elif menu == "📊 Avaliação de Performance — IA":
     st.title("📊 Avaliação de Performance com IA")
-    # <- Código do agente GPT-4o para gerar relatórios e insights
+    st.info("Em construção...")
 
 
 
