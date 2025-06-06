@@ -631,10 +631,11 @@ elif menu == "📝 Lançamento de Timesheet":
             "Time",
             sorted(df_projetos["Time"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
         )
-    
+
+        df_atividades_filtrado = df_atividades[df_atividades["Projeto Vinculado"] == projeto]
         atividade = st.selectbox(
             "Atividade",
-            sorted(df_atividades["Nome Atividade"].unique()) if not df_atividades.empty else ["Sem atividades para este projeto"]
+            sorted(df_atividades_filtrado["Nome Atividade"].unique()) if not df_atividades_filtrado.empty else ["Sem atividades para este projeto"]
         )
     
         quantidade = st.number_input("Quantidade Tarefas", min_value=0, step=1)
