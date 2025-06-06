@@ -305,7 +305,7 @@ if menu == "🏠 Dashboard":
     # 🔸 Horas por Projeto
     st.subheader("🏗️ Horas por Projeto")
     if not df_filtrado.empty:
-        grafico_projeto = df_filtrado.groupby("Projeto")["Horas"].sum().reset_index()
+        grafico_projeto = df_filtrado.groupby("Projeto")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
         fig = px.bar(
             grafico_projeto,
             x="Projeto",
@@ -318,7 +318,7 @@ if menu == "🏠 Dashboard":
     # 🔸 Horas por Time
     st.subheader("🚀 Horas por Time")
     if not df_filtrado.empty:
-        grafico_time = df_filtrado.groupby("Time")["Horas"].sum().reset_index()
+        grafico_time = df_filtrado.groupby("Time")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
         fig = px.bar(
             grafico_time,
             x="Time",
@@ -330,7 +330,7 @@ if menu == "🏠 Dashboard":
     
     # 🔸 Horas por Atividade
     st.subheader("🗒️ Horas por Atividade")
-    grafico_atividade = df_filtrado.groupby("Atividade")["Horas"].sum().reset_index()
+    grafico_atividade = df_filtrado.groupby("Atividade")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
     fig = px.bar(
         grafico_atividade,
         x="Atividade",
@@ -342,7 +342,7 @@ if menu == "🏠 Dashboard":
     
     # 🔸 Horas por Empresa
     st.subheader("🏢 Horas por Empresa")
-    grafico_empresa = df_filtrado.groupby("Empresa")["Horas"].sum().reset_index()
+    grafico_empresa = df_filtrado.groupby("Empresa")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
     fig = px.pie(
         grafico_empresa,
         names="Empresa",
@@ -354,7 +354,7 @@ if menu == "🏠 Dashboard":
     
     # 🔸 Horas por Colaborador
     st.subheader("👤 Horas por Colaborador")
-    grafico_colab = df_filtrado.groupby("Nome")["Horas"].sum().reset_index()
+    grafico_colab = df_filtrado.groupby("Nome")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
     fig = px.bar(
         grafico_colab,
         x="Nome",
