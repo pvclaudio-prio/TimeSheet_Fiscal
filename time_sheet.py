@@ -612,7 +612,23 @@ elif menu == "📝 Lançamento de Timesheet":
         "timesheet.csv",
         ["Usuário","Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
+
+    projeto = st.selectbox(
+    "Projeto",
+    sorted(df_projetos["Nome Projeto"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
+    )
     
+    time = st.selectbox(
+        "Time",
+        sorted(df_projetos[df_projetos["Nome Projeto"] == projeto]["Time"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
+    )
+    
+    df_atividades_filtrado = df_atividades[df_atividades["Projeto Vinculado"] == projeto]
+    atividade = st.selectbox(
+        "Atividade",
+        sorted(df_atividades_filtrado["Nome Atividade"].unique()) if not df_atividades_filtrado.empty else ["Sem atividades para este projeto"]
+    )
+
     # 🔸 Formulário de Lançamento
     with st.form("form_timesheet"):
         data = st.date_input("Data", value=date.today())
@@ -620,22 +636,6 @@ elif menu == "📝 Lançamento de Timesheet":
         empresa = st.selectbox(
             "Empresa (Código SAP)",
             sorted(df_empresas["Codigo SAP"].unique()) if not df_empresas.empty else ["Sem empresas cadastradas"]
-        )
-    
-        projeto = st.selectbox(
-            "Projeto",
-            sorted(df_projetos["Nome Projeto"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
-        )
-
-        time = st.selectbox(
-            "Time",
-            sorted(df_projetos["Time"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
-        )
-
-        df_atividades_filtrado = df_atividades[df_atividades["Projeto Vinculado"] == projeto]
-        atividade = st.selectbox(
-            "Atividade",
-            sorted(df_atividades_filtrado["Nome Atividade"].unique()) if not df_atividades_filtrado.empty else ["Sem atividades para este projeto"]
         )
     
         quantidade = st.number_input("Quantidade Tarefas", min_value=0, step=1)
