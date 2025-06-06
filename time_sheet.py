@@ -320,7 +320,7 @@ if menu == "🏠 Dashboard":
     if not df_filtrado.empty:
         grafico_time = df_filtrado.groupby("Time")["Horas"].sum().reset_index()
         fig = px.bar(
-            grafico_projeto,
+            grafico_time,
             x="Time",
             y="Horas",
             title=None,
