@@ -618,15 +618,15 @@ elif menu == "📝 Lançamento de Timesheet":
     sorted(df_projetos["Nome Projeto"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
     )
     
-    time = st.selectbox(
-        "Time",
-        sorted(df_projetos[df_projetos["Nome Projeto"] == projeto]["Time"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
-    )
-    
     df_atividades_filtrado = df_atividades[df_atividades["Projeto Vinculado"] == projeto]
     atividade = st.selectbox(
         "Atividade",
         sorted(df_atividades_filtrado["Nome Atividade"].unique()) if not df_atividades_filtrado.empty else ["Sem atividades para este projeto"]
+    )
+
+    time = st.selectbox(
+        "Time",
+        sorted(df_projetos[df_projetos["Nome Projeto"] == projeto]["Time"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
     )
 
     # 🔸 Formulário de Lançamento
