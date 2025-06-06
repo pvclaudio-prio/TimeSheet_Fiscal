@@ -599,7 +599,7 @@ elif menu == "📝 Lançamento de Timesheet":
         )
 
         time = st.selectbox(
-            "Projeto",
+            "Time",
             df_projetos["Time"].unique() if not df_projetos.empty else ["Sem projetos cadastrados"]
         )
     
