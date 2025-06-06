@@ -259,6 +259,16 @@ if menu == "🏠 Dashboard":
         "Projeto:",
         ["Todos"] + sorted(df_timesheet["Projeto"].dropna().unique().tolist())
     )
+
+    time = st.sidebar.selectbox(
+        "Time:",
+        ["Todos"] + sorted(df_timesheet["Time"].dropna().unique().tolist())
+    )
+
+    atividade = st.sidebar.selectbox(
+        "Atividade:",
+        ["Todas"] + sorted(df_timesheet["Atividade"].dropna().unique().tolist())
+    )
     
     # Aplicar filtros
     df_filtrado = df_timesheet[
@@ -271,6 +281,12 @@ if menu == "🏠 Dashboard":
     
     if projeto != "Todos":
         df_filtrado = df_filtrado[df_filtrado["Projeto"] == projeto]
+
+    if time != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["Time"] == time]
+
+    if atividade != "Todas":
+        df_filtrado = df_filtrado[df_filtrado["Atividade"] == atividade]
     
     # 🚀 KPIs
     total_horas = df_filtrado["Horas"].sum()
