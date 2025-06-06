@@ -705,7 +705,8 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     
     if usuario != "Todos":
         df_filtrado = df_filtrado[df_filtrado["Nome"] == usuario]
-    
+
+    df_filtrado["Data"] = pd.to_datetime(df_filtrado["Data"], errors="coerce")
     df_filtrado = df_filtrado[
         (df_filtrado["Data"].dt.date >= data_inicial) &
         (df_filtrado["Data"].dt.date <= data_final)
