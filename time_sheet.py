@@ -314,6 +314,19 @@ if menu == "🏠 Dashboard":
             text_auto='.2s'
         )
         st.plotly_chart(fig, use_container_width=True)
+
+    # 🔸 Horas por Time
+    st.subheader("🚀 Horas por Time")
+    if not df_filtrado.empty:
+        grafico_time = df_filtrado.groupby("Time")["Horas"].sum().reset_index()
+        fig = px.bar(
+            grafico_projeto,
+            x="Time",
+            y="Horas",
+            title=None,
+            text_auto='.2s'
+        )
+        st.plotly_chart(fig, use_container_width=True)
     
     # 🔸 Horas por Atividade
     st.subheader("🗒️ Horas por Atividade")
