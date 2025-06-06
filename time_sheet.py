@@ -444,11 +444,11 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
     st.title("🗂️ Cadastro de Projetos e Atividades")
     st.markdown("## 🏗️ Projetos")
 
-    df_projetos = carregar_arquivo("projetos.csv", ["Nome Projeto", "Descrição", "Status"])
+    df_projetos = carregar_arquivo("projetos.csv", ["Nome Projeto", "Time", "Status"])
     
     with st.form("form_projeto"):
         nome_projeto = st.text_input("Nome do Projeto")
-        descricao_projeto = st.text_area("Descrição do Projeto")
+        descricao_projeto = st.selectbox("Time", ["Ambos", "Diretos", "Indiretos"])
         status_projeto = st.selectbox("Status do Projeto", ["Não Iniciado", "Em Andamento", "Concluído"])
     
         submitted = st.form_submit_button("💾 Salvar Projeto")
@@ -461,7 +461,7 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
                 else:
                     novo = pd.DataFrame({
                         "Nome Projeto": [nome_projeto.strip()],
-                        "Descrição": [descricao_projeto.strip()],
+                        "Time": [descricao_projeto.strip()],
                         "Status": [status_projeto]
                     })
                     df_projetos = pd.concat([df_projetos, novo], ignore_index=True)
@@ -478,14 +478,14 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
         projeto_info = df_projetos[df_projetos["Nome Projeto"] == projeto_selecionado].iloc[0]
     
         novo_nome = st.text_input("Novo Nome do Projeto", value=projeto_info["Nome Projeto"])
-        nova_desc = st.text_area("Nova Descrição", value=projeto_info["Descrição"])
+        nova_desc = st.selectbox("Alterar Time", ["Ambos", "Diretos", "Indiretos"], index=["Ambos", "Diretos", "Indiretos"].index(projeto_info["Time"]))
         novo_status = st.selectbox("Novo Status", ["Não Iniciado", "Em Andamento", "Concluído"], index=["Não Iniciado", "Em Andamento", "Concluído"].index(projeto_info["Status"]))
     
         col1, col2 = st.columns(2)
         with col1:
             if st.button("✏️ Atualizar Projeto"):
                 df_projetos.loc[df_projetos["Nome Projeto"] == projeto_selecionado, "Nome Projeto"] = novo_nome.strip()
-                df_projetos.loc[df_projetos["Nome Projeto"] == projeto_selecionado, "Descrição"] = nova_desc.strip()
+                df_projetos.loc[df_projetos["Nome Projeto"] == projeto_selecionado, "Time"] = nova_desc.strip()
                 df_projetos.loc[df_projetos["Nome Projeto"] == projeto_selecionado, "Status"] = novo_status
                 salvar_arquivo(df_projetos, "projetos.csv")
                 st.success("✅ Projeto atualizado com sucesso!")
