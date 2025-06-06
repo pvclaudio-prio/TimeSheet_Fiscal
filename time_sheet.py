@@ -640,9 +640,8 @@ elif menu == "📝 Lançamento de Timesheet":
     
         quantidade = st.number_input("Quantidade Tarefas", min_value=0, step=1)
     
-        st.markdown("**Horas Gastas** (formato HH:MM)")
-        horas = st.text_input("", value="")
-    
+        horas = st.text_input("Horas Gastas")
+        
         observacoes = st.text_area("Observações", placeholder="Descreva detalhes relevantes sobre este lançamento...")
     
         submitted = st.form_submit_button("💾 Registrar")
