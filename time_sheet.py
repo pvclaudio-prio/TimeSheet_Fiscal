@@ -643,7 +643,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     # 🔸 Carregar Dados
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
-        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
     
     # 🔧 Tratamento de datas
