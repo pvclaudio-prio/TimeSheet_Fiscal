@@ -619,22 +619,22 @@ elif menu == "📝 Lançamento de Timesheet":
     
         empresa = st.selectbox(
             "Empresa (Código SAP)",
-            df_empresas["Codigo SAP"].unique() if not df_empresas.empty else ["Sem empresas cadastradas"]
+            sorted(df_empresas["Codigo SAP"].unique()) if not df_empresas.empty else ["Sem empresas cadastradas"]
         )
     
         projeto = st.selectbox(
             "Projeto",
-            df_projetos["Nome Projeto"].unique() if not df_projetos.empty else ["Sem projetos cadastrados"]
+            sorted(df_projetos["Nome Projeto"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
         )
 
         time = st.selectbox(
             "Time",
-            df_projetos["Time"].unique() if not df_projetos.empty else ["Sem projetos cadastrados"]
+            sorted(df_projetos["Time"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
         )
     
         atividade = st.selectbox(
             "Atividade",
-            df_atividades["Nome Atividade"].unique() if not df_atividades.empty else ["Sem atividades para este projeto"]
+            sorted(df_atividades["Nome Atividade"].unique()) if not df_atividades.empty else ["Sem atividades para este projeto"]
         )
     
         quantidade = st.number_input("Quantidade Tarefas", min_value=0, step=1)
