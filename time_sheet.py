@@ -597,6 +597,11 @@ elif menu == "📝 Lançamento de Timesheet":
             "Projeto",
             df_projetos["Nome Projeto"] if not df_projetos.empty else ["Sem projetos cadastrados"]
         )
+
+        time = st.selectbox(
+            "Projeto",
+            df_projetos["Time"] if not df_projetos.empty else ["Sem projetos cadastrados"]
+        )
     
         atividade = st.selectbox(
             "Atividade",
@@ -621,6 +626,7 @@ elif menu == "📝 Lançamento de Timesheet":
                     "Data": [data.strftime("%Y-%m-%d")],
                     "Empresa": [empresa],
                     "Projeto": [projeto],
+                    "Time": [time],
                     "Atividade": [atividade],
                     "Quantidade": [quantidade],
                     "Horas Gastas": [horas.strip()],
