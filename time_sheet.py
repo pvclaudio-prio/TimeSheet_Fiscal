@@ -692,7 +692,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     usuario_logado = st.session_state.username
     
     if usuario_logado not in admin_users:
-        df_timesheet = df_timesheet[df_timesheet["Usuário"] == "tdias"]
+        df_timesheet = df_timesheet[df_timesheet["Nome"] == "Taiana Bastos"]
     
     # 🔍 Filtros
     st.sidebar.subheader("🔍 Filtros")
