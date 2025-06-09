@@ -14,6 +14,8 @@ import plotly.express as px
 
 st.set_page_config(page_title="Timesheet Fiscal", layout="wide")
 st.write("Hoje:", pd.Timestamp.today())
+usuario_logado = st.session_state.username
+st.write(usuario_logado)
 
 # -----------------------------
 # Validação Usuários
