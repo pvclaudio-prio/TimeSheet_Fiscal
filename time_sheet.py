@@ -11,6 +11,7 @@ from io import BytesIO
 from docx import Document
 from docx.shared import Pt
 import plotly.express as px
+import re
 
 st.set_page_config(page_title="Timesheet Fiscal", layout="wide")
 st.write("Hoje:", pd.Timestamp.today())
@@ -176,7 +177,6 @@ def carregar_empresas():
     df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
     return df
 
-
 def salvar_empresas(df):
     df.to_csv("empresas.csv", sep=";", index=False, encoding="utf-8-sig")
     drive = conectar_drive()
@@ -196,6 +196,24 @@ def salvar_empresas(df):
 
     arquivo.SetContentFile("empresas.csv")
     arquivo.Upload()
+
+def formatar_horas(horas_input):
+    # Substitui ponto e ponto e vírgula por dois pontos
+    horas_input = re.sub(r"[.;]", ":", horas_input.strip())
+
+    # Se usuário digitar só a hora, adiciona ":00"
+    if re.fullmatch(r"\d{1,2}", horas_input):
+        horas_input += ":00"
+
+    # Corrige hora com um dígito
+    match = re.fullmatch(r"(\d{1,2}):(\d{1,2})", horas_input)
+    if match:
+        hora = int(match.group(1))
+        minuto = int(match.group(2))
+        if 0 <= hora < 24 and 0 <= minuto < 60:
+            return f"{hora:02d}:{minuto:02d}"
+    
+    return None
     
 # -----------------------------
 # Menu Latereal
@@ -641,6 +659,7 @@ elif menu == "📝 Lançamento de Timesheet":
         quantidade = st.number_input("Quantidade Tarefas", min_value=0, step=1)
     
         horas = st.text_input("Horas Gastas (Formato HH;MM)")
+        horas = formatar_horas(horas)
         
         observacoes = st.text_area("Observações", placeholder="Descreva detalhes relevantes sobre este lançamento...")
     
