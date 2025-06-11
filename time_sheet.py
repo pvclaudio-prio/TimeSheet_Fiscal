@@ -219,7 +219,11 @@ def formatar_horas(horas_input):
         return f"{h:02d}:{m:02d}"
     except:
         return None
-    
+        
+def normalizar_coluna_horas(df, coluna="Horas Gastas"):
+    df[coluna] = df[coluna].astype(str).apply(formatar_horas)
+    return df
+
 # -----------------------------
 # Menu Latereal
 # -----------------------------
@@ -247,7 +251,8 @@ if menu == "🏠 Dashboard":
         "timesheet.csv",
         ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
-    
+    df_timesheet = normalizar_coluna_horas(df_timesheet)
+
     if df_timesheet.empty:
         st.info("⚠️ Não há dados no timesheet para gerar dashboard.")
         st.stop()
@@ -635,6 +640,7 @@ elif menu == "📝 Lançamento de Timesheet":
         "timesheet.csv",
         ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
+    df_timesheet = normalizar_coluna_horas(df_timesheet)
 
     projeto = st.selectbox(
     "Projeto",
@@ -705,6 +711,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
         "timesheet.csv",
         ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
+    df_timesheet = normalizar_coluna_horas(df_timesheet)
     
     # 🔧 Tratamento de datas
     if not df_timesheet.empty:
@@ -860,6 +867,7 @@ elif menu == "📊 Avaliação de Performance — IA":
         "timesheet.csv",
         ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
+    df_timesheet = normalizar_coluna_horas(df_timesheet)
     
     if df_timesheet.empty:
         st.info("⚠️ Não há dados no timesheet para avaliar.")
