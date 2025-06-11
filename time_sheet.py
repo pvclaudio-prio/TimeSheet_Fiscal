@@ -240,7 +240,7 @@ if menu == "🏠 Dashboard":
     # 🔗 Carregar Dados
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
-        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
     
     if df_timesheet.empty:
@@ -628,7 +628,7 @@ elif menu == "📝 Lançamento de Timesheet":
     df_atividades = carregar_arquivo("atividades.csv", ["Nome Atividade", "Projeto Vinculado", "Descrição", "Status"])
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
-        ["Usuário","Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
 
     projeto = st.selectbox(
@@ -853,7 +853,7 @@ elif menu == "📊 Avaliação de Performance — IA":
     # 🔗 Carregar Dados
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
-        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
+        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
     
     if df_timesheet.empty:
