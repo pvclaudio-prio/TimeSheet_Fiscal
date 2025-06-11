@@ -248,7 +248,7 @@ if menu == "🏠 Dashboard":
         st.stop()
     
     # Tratamento de datas
-    df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors="coerce")
+    df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], dayfirst=True).dt.strftime("%d/%m/%Y")
     
     # 🔢 Conversão de Horas
     def converter_para_horas(horas_str):
