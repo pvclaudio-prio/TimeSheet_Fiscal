@@ -262,7 +262,7 @@ if menu == "🏠 Dashboard":
     
     # 🔍 Filtros
     st.sidebar.subheader("🔍 Filtros")
-    
+    df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], dayfirst=True, errors="coerce")
     data_inicial, data_final = st.sidebar.date_input(
         "Período:",
         [df_timesheet["Data"].min().date(), df_timesheet["Data"].max().date()]
