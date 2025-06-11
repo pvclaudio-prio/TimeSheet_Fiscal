@@ -198,22 +198,27 @@ def salvar_empresas(df):
     arquivo.Upload()
 
 def formatar_horas(horas_input):
-    # Substitui ponto e ponto e vírgula por dois pontos
-    horas_input = re.sub(r"[.;]", ":", horas_input.strip())
+    if not horas_input:
+        return None
 
-    # Se usuário digitar só a hora, adiciona ":00"
-    if re.fullmatch(r"\d{1,2}", horas_input):
-        horas_input += ":00"
+    horas_input = horas_input.strip().replace(",", ".")  # troca vírgula por ponto
+    pattern_hhmm = re.fullmatch(r"(\d{1,2})[:;.,](\d{1,2})", horas_input)
 
-    # Corrige hora com um dígito
-    match = re.fullmatch(r"(\d{1,2}):(\d{1,2})", horas_input)
-    if match:
-        hora = int(match.group(1))
-        minuto = int(match.group(2))
-        if 0 <= hora < 24 and 0 <= minuto < 60:
-            return f"{hora:02d}:{minuto:02d}"
-    
-    return None
+    # Caso esteja no formato HH:MM ou semelhante
+    if pattern_hhmm:
+        h, m = map(int, pattern_hhmm.groups())
+        if 0 <= h < 24 and 0 <= m < 60:
+            return f"{h:02d}:{m:02d}"
+
+    # Caso seja decimal (ex: 0.25 ou 1.5)
+    try:
+        decimal = float(horas_input)
+        total_minutos = int(round(decimal * 60))
+        h = total_minutos // 60
+        m = total_minutos % 60
+        return f"{h:02d}:{m:02d}"
+    except:
+        return None
     
 # -----------------------------
 # Menu Latereal
