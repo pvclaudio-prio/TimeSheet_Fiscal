@@ -672,7 +672,7 @@ elif menu == "📝 Lançamento de Timesheet":
                 novo = pd.DataFrame({
                     "Usuário": [usuario_logado],
                     "Nome":[nome_usuario],
-                    "Data": [data],
+                    "Data": [data.strftime("%Y-%m-%d")],
                     "Empresa": [empresa],
                     "Projeto": [projeto],
                     "Time": [time],
