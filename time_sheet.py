@@ -677,8 +677,8 @@ elif menu == "📝 Lançamento de Timesheet":
     
         quantidade = st.number_input("Quantidade Tarefas", min_value=0, step=1)
     
-        horas = st.text_input("Horas Gastas (Formato HH;MM)")
-        horas = formatar_horas(horas)
+        tempo = st.time_input("Horas Gastas")
+        horas = f"{tempo.hour:02d}:{tempo.minute:02d}"
         
         observacoes = st.text_area("Observações", placeholder="Descreva detalhes relevantes sobre este lançamento...")
     
