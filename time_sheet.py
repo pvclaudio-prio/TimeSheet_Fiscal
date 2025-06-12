@@ -159,6 +159,7 @@ def salvar_arquivo(df, nome_arquivo):
 
     arquivo.SetContentFile(nome_arquivo)
     arquivo.Upload()
+    salvar_backup_redundante(df, nome_base=nome_arquivo)
 
 def carregar_empresas():
     drive = conectar_drive()
@@ -236,6 +237,56 @@ def padronizar_coluna_data(df, coluna="Data"):
     df = df[df[coluna].notnull()]  # remove linhas com datas inválidas
     df[coluna] = df[coluna].dt.strftime("%d/%m/%Y")
     return df
+    
+def salvar_backup_redundante(df, nome_base="timesheet.csv"):
+    from pathlib import Path
+
+    # 1. Conecta ao Google Drive
+    drive = conectar_drive()
+    pasta_principal_id = obter_pasta_ts_fiscal(drive)
+
+    # 2. Verifica se a subpasta "Backup" existe
+    lista = drive.ListFile({
+        'q': f"'{pasta_principal_id}' in parents and title='Backup' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    }).GetList()
+
+    if lista:
+        pasta_backup_id = lista[0]['id']
+    else:
+        # Cria a pasta de backup dentro de ts-fiscal
+        pasta = drive.CreateFile({
+            'title': 'Backup',
+            'mimeType': 'application/vnd.google-apps.folder',
+            'parents': [{'id': pasta_principal_id}]
+        })
+        pasta.Upload()
+        pasta_backup_id = pasta['id']
+
+    # 3. Descobre o próximo número sequencial disponível
+    arquivos_backup = drive.ListFile({
+        'q': f"'{pasta_backup_id}' in parents and title contains 'timesheet(' and trashed=false"
+    }).GetList()
+
+    padrao = re.compile(r"timesheet\((\d+)\)\.csv$")
+    numeros_existentes = [
+        int(match.group(1)) for arq in arquivos_backup
+        if (match := padrao.search(arq['title']))
+    ]
+    proximo_numero = max(numeros_existentes, default=0) + 1
+
+    nome_versao = f"timesheet({proximo_numero}).csv"
+
+    # 4. Salva CSV temporariamente
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
+    df.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
+
+    # 5. Envia ao Drive
+    arquivo_backup = drive.CreateFile({
+        'title': nome_versao,
+        'parents': [{'id': pasta_backup_id}]
+    })
+    arquivo_backup.SetContentFile(caminho_temp)
+    arquivo_backup.Upload()
 
 # -----------------------------
 # Menu Latereal
