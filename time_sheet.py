@@ -224,6 +224,12 @@ def normalizar_coluna_horas(df, coluna="Horas Gastas"):
     df[coluna] = df[coluna].astype(str).apply(formatar_horas)
     return df
 
+def padronizar_coluna_data(df, coluna="Data"):
+    df[coluna] = pd.to_datetime(df[coluna], errors="coerce", dayfirst=True)
+    df = df[df[coluna].notnull()]  # remove linhas com datas inválidas
+    df[coluna] = df[coluna].dt.strftime("%d/%m/%Y")
+    return df
+
 # -----------------------------
 # Menu Latereal
 # -----------------------------
@@ -252,6 +258,7 @@ if menu == "🏠 Dashboard":
         ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
     df_timesheet = normalizar_coluna_horas(df_timesheet)
+    df_timesheet = padronizar_coluna_data(df_timesheet)
 
     if df_timesheet.empty:
         st.info("⚠️ Não há dados no timesheet para gerar dashboard.")
@@ -641,6 +648,7 @@ elif menu == "📝 Lançamento de Timesheet":
         ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
     df_timesheet = normalizar_coluna_horas(df_timesheet)
+    df_timesheet = padronizar_coluna_data(df_timesheet)
 
     projeto = st.selectbox(
     "Projeto",
@@ -712,6 +720,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
         ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
     )
     df_timesheet = normalizar_coluna_horas(df_timesheet)
+    df_timesheet = padronizar_coluna_data(df_timesheet)
     
     # 🔧 Tratamento de datas
     if not df_timesheet.empty:
