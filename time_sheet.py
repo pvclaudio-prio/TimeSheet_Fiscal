@@ -113,20 +113,27 @@ def carregar_arquivo(nome_arquivo, colunas):
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
-    arquivos = drive.ListFile({
-        'q': f"'{pasta_id}' in parents and title = '{nome_arquivo}' and trashed=false"
-    }).GetList()
+    try:
+        arquivos = drive.ListFile({
+            'q': f"'{pasta_id}' in parents and title = '{nome_arquivo}' and trashed=false"
+        }).GetList()
+    except Exception as e:
+        st.error(f"❌ Erro ao acessar o Drive: {e}")
+        st.stop()
 
     if not arquivos:
-        df = pd.DataFrame(columns=colunas)
-        df.to_csv(nome_arquivo, sep=";", index=False, encoding="utf-8-sig")
-        arquivo = drive.CreateFile({
-            'title': nome_arquivo,
-            'parents': [{'id': pasta_id}]
-        })
-        arquivo.SetContentFile(nome_arquivo)
-        arquivo.Upload()
-        return df
+        st.error(f"❌ Arquivo '{nome_arquivo}' não encontrado no Google Drive.\nOperação interrompida para evitar sobrescrita acidental.")
+        st.stop()
+
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
+    arquivos[0].GetContentFile(caminho_temp)
+    df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
+
+    # Segurança extra: se vier vazio e não deveria
+    if df.empty:
+        st.warning("⚠️ A base foi carregada mas está vazia. Verifique o histórico de versões no Google Drive.")
+
+    return df
 
     caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
     arquivos[0].GetContentFile(caminho_temp)
