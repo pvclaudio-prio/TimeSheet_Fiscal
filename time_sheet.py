@@ -641,7 +641,7 @@ elif menu == "📝 Lançamento de Timesheet":
 
     # 🔸 Carregar Bases
     df_empresas = carregar_arquivo("empresas.csv", ["Codigo SAP", "Nome Empresa", "Descrição"])
-    df_projetos = carregar_arquivo("projetos.csv", ["Nome Projeto", "Descrição", "Status"])
+    df_projetos = carregar_arquivo("projetos.csv", ["Nome Projeto", "Descrição", "Status", "Time"])
     df_atividades = carregar_arquivo("atividades.csv", ["Nome Atividade", "Projeto Vinculado", "Descrição", "Status"])
     df_timesheet = carregar_arquivo(
         "timesheet.csv",
@@ -650,9 +650,10 @@ elif menu == "📝 Lançamento de Timesheet":
     df_timesheet = normalizar_coluna_horas(df_timesheet)
     df_timesheet = padronizar_coluna_data(df_timesheet)
 
+    # 🔸 Seleção de Projeto e Atividade
     projeto = st.selectbox(
-    "Projeto",
-    sorted(df_projetos["Nome Projeto"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
+        "Projeto",
+        sorted(df_projetos["Nome Projeto"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
     )
     
     df_atividades_filtrado = df_atividades[df_atividades["Projeto Vinculado"] == projeto]
@@ -661,7 +662,7 @@ elif menu == "📝 Lançamento de Timesheet":
         sorted(df_atividades_filtrado["Nome Atividade"].unique()) if not df_atividades_filtrado.empty else ["Sem atividades para este projeto"]
     )
 
-    time = st.selectbox(
+    time_opcao = st.selectbox(
         "Time",
         sorted(df_projetos[df_projetos["Nome Projeto"] == projeto]["Time"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
     )
@@ -669,35 +670,35 @@ elif menu == "📝 Lançamento de Timesheet":
     # 🔸 Formulário de Lançamento
     with st.form("form_timesheet"):
         data = st.date_input("Data", value=date.today())
-    
+
         empresa = st.selectbox(
             "Empresa (Código SAP)",
             sorted(df_empresas["Codigo SAP"].unique()) if not df_empresas.empty else ["Sem empresas cadastradas"]
         )
-    
+
         quantidade = st.number_input("Quantidade Tarefas", min_value=0, step=1)
-    
-        tempo = st.time_input("Horas Gastas", value=time(0, 0))
+
+        tempo = st.time_input("Horas Gastas", value=time(0, 0))  # <-- Valor padrão 00:00
         horas = f"{tempo.hour:02d}:{tempo.minute:02d}"
-        
+
         observacoes = st.text_area("Observações", placeholder="Descreva detalhes relevantes sobre este lançamento...")
-    
+
         submitted = st.form_submit_button("💾 Registrar")
-    
+
         if submitted:
-            if not horas.strip():
-                st.warning("⚠️ O campo Horas Gastas é obrigatório no formato HH:MM.")
+            if horas == "00:00":
+                st.warning("⚠️ O campo Horas Gastas não pode ser 00:00.")
             else:
                 novo = pd.DataFrame({
                     "Usuário": [usuario_logado],
-                    "Nome":[nome_usuario],
+                    "Nome": [nome_usuario],
                     "Data": [data.strftime("%d/%m/%Y")],
                     "Empresa": [empresa],
                     "Projeto": [projeto],
-                    "Time": [time],
+                    "Time": [time_opcao],
                     "Atividade": [atividade],
                     "Quantidade": [quantidade],
-                    "Horas Gastas": [horas.strip()],
+                    "Horas Gastas": [horas],
                     "Observações": [observacoes.strip()]
                 })
                 df_timesheet = pd.concat([df_timesheet, novo], ignore_index=True)
