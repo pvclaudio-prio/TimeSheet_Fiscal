@@ -289,22 +289,14 @@ def salvar_backup_redundante(df, nome_base="timesheet.csv"):
 
 st.sidebar.title("📋 Menu")
 
-if "menu_index" not in st.session_state:
-    st.session_state.menu_index = 0
-
-menu = st.sidebar.radio(
-    "Navegar para:",
-    [
-        "🏠 Dashboard",
-        "🏢 Cadastro de Empresas",
-        "🗂️ Cadastro de Projetos e Atividades",
-        "📝 Lançamento de Timesheet",
-        "📄 Visualizar / Editar Timesheet",
-        "📊 Avaliação de Performance — IA"
-    ],
-    index=st.session_state.menu_index,
-    key="menu_index"
-)
+menu_opcoes = [
+    "🏠 Dashboard",
+    "🏢 Cadastro de Empresas",
+    "🗂️ Cadastro de Projetos e Atividades",
+    "📝 Lançamento de Timesheet",
+    "📄 Visualizar / Editar Timesheet",
+    "📊 Avaliação de Performance — IA"
+]
 
 # -----------------------------
 # Conteúdo das Páginas
