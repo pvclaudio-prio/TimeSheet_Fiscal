@@ -316,10 +316,7 @@ if menu == "🏠 Dashboard":
     if df_timesheet.empty:
         st.info("⚠️ Não há dados no timesheet para gerar dashboard.")
         st.stop()
-    
-    # Tratamento de datas
-    df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], dayfirst=True).dt.strftime("%d/%m/%Y")
-    
+      
     # 🔢 Conversão de Horas
     def converter_para_horas(horas_str):
         try:
@@ -362,7 +359,7 @@ if menu == "🏠 Dashboard":
     df_filtrado = df_timesheet[
         (df_timesheet["Data"].dt.date >= data_inicial) &
         (df_timesheet["Data"].dt.date <= data_final)
-    ]
+    ].copy()
     
     if empresa != "Todas":
         df_filtrado = df_filtrado[df_filtrado["Empresa"] == empresa]
