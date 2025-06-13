@@ -589,7 +589,13 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
     if not df_projetos.empty:
         projeto_selecionado = st.selectbox("Selecione o Projeto:", df_projetos["Nome Projeto"])
     
-        projeto_info = df_projetos[df_projetos["Nome Projeto"] == projeto_selecionado].iloc[0]
+        # Garantir índice fixo
+        idx = df_projetos[df_projetos["Nome Projeto"] == projeto_selecionado].index
+        if idx.empty:
+            st.warning("⚠️ Projeto não encontrado.")
+            st.stop()
+    
+        projeto_info = df_projetos.loc[idx[0]]
     
         novo_nome = st.text_input("Novo Nome do Projeto", value=projeto_info["Nome Projeto"])
         nova_desc = st.selectbox("Alterar Time", ["Ambos", "Diretos", "Indiretos"], index=["Ambos", "Diretos", "Indiretos"].index(projeto_info["Time"]))
@@ -598,9 +604,9 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
         col1, col2 = st.columns(2)
         with col1:
             if st.button("✏️ Atualizar Projeto"):
-                df_projetos.loc[df_projetos["Nome Projeto"] == projeto_selecionado, "Nome Projeto"] = novo_nome.strip()
-                df_projetos.loc[df_projetos["Nome Projeto"] == projeto_selecionado, "Time"] = nova_desc.strip()
-                df_projetos.loc[df_projetos["Nome Projeto"] == projeto_selecionado, "Status"] = novo_status
+                df_projetos.loc[idx, "Nome Projeto"] = novo_nome.strip()
+                df_projetos.loc[idx, "Time"] = nova_desc.strip()
+                df_projetos.loc[idx, "Status"] = novo_status
                 salvar_arquivo(df_projetos, "projetos.csv")
                 st.success("✅ Projeto atualizado com sucesso!")
                 st.experimental_rerun()
@@ -609,7 +615,7 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
             if st.button("🗑️ Excluir Projeto"):
                 confirmar = st.radio("⚠️ Tem certeza que deseja excluir?", ["Não", "Sim"], horizontal=True)
                 if confirmar == "Sim":
-                    df_projetos = df_projetos[df_projetos["Nome Projeto"] != projeto_selecionado]
+                    df_projetos = df_projetos.drop(idx)
                     salvar_arquivo(df_projetos, "projetos.csv")
                     st.success("✅ Projeto excluído com sucesso!")
                     st.experimental_rerun()
@@ -651,7 +657,12 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
     if not df_atividades.empty:
         atividade_selecionada = st.selectbox("Selecione a Atividade:", df_atividades["Nome Atividade"])
     
-        atividade_info = df_atividades[df_atividades["Nome Atividade"] == atividade_selecionada].iloc[0]
+        idx = df_atividades[df_atividades["Nome Atividade"] == atividade_selecionada].index
+        if idx.empty:
+            st.warning("⚠️ Atividade não encontrada.")
+            st.stop()
+    
+        atividade_info = df_atividades.loc[idx[0]]
     
         novo_nome = st.text_input("Novo Nome da Atividade", value=atividade_info["Nome Atividade"])
         novo_projeto = st.selectbox("Novo Projeto Vinculado", df_projetos["Nome Projeto"], index=df_projetos["Nome Projeto"].tolist().index(atividade_info["Projeto Vinculado"]))
@@ -661,10 +672,10 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
         col1, col2 = st.columns(2)
         with col1:
             if st.button("✏️ Atualizar Atividade"):
-                df_atividades.loc[df_atividades["Nome Atividade"] == atividade_selecionada, "Nome Atividade"] = novo_nome.strip()
-                df_atividades.loc[df_atividades["Nome Atividade"] == atividade_selecionada, "Projeto Vinculado"] = novo_projeto.strip()
-                df_atividades.loc[df_atividades["Nome Atividade"] == atividade_selecionada, "Descrição"] = nova_desc.strip()
-                df_atividades.loc[df_atividades["Nome Atividade"] == atividade_selecionada, "Status"] = novo_status
+                df_atividades.loc[idx, "Nome Atividade"] = novo_nome.strip()
+                df_atividades.loc[idx, "Projeto Vinculado"] = novo_projeto.strip()
+                df_atividades.loc[idx, "Descrição"] = nova_desc.strip()
+                df_atividades.loc[idx, "Status"] = novo_status
                 salvar_arquivo(df_atividades, "atividades.csv")
                 st.success("✅ Atividade atualizada com sucesso!")
                 st.experimental_rerun()
@@ -673,7 +684,7 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
             if st.button("🗑️ Excluir Atividade"):
                 confirmar = st.radio("⚠️ Tem certeza que deseja excluir?", ["Não", "Sim"], horizontal=True)
                 if confirmar == "Sim":
-                    df_atividades = df_atividades[df_atividades["Nome Atividade"] != atividade_selecionada]
+                    df_atividades = df_atividades.drop(idx)
                     salvar_arquivo(df_atividades, "atividades.csv")
                     st.success("✅ Atividade excluída com sucesso!")
                     st.experimental_rerun()
