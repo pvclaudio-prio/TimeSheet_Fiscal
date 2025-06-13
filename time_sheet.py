@@ -135,11 +135,6 @@ def carregar_arquivo(nome_arquivo, colunas):
 
     return df
 
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
-    arquivos[0].GetContentFile(caminho_temp)
-    df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
-    return df
-
 def salvar_arquivo(df, nome_arquivo):
     df.to_csv(nome_arquivo, sep=";", index=False, encoding="utf-8-sig")
     drive = conectar_drive()
