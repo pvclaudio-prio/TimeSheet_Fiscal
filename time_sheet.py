@@ -940,7 +940,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     buffer = df_filtrado.to_csv(index=False, sep=";", encoding="utf-8-sig").encode()
     
     st.download_button(
-        label="📥 Baixar CSV Filtrado",
+        label="📥 Baixar Tabela",
         data=buffer,
         file_name="timesheet_filtrado.csv",
         mime="text/csv"
