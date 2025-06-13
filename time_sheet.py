@@ -856,6 +856,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     ].sort_values(by="Data")
     
     # 🔸 Visualização
+    df_filtrado["Data"] = df_filtrado["Data"].strftime("%d/%m/%Y")
     st.markdown(f"### 🔍 {len(df_filtrado)} registros encontrados")
     st.dataframe(df_filtrado, use_container_width=True)
     
