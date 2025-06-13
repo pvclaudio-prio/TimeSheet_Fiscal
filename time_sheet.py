@@ -289,14 +289,14 @@ def salvar_backup_redundante(df, nome_base="timesheet.csv"):
 
 st.sidebar.title("📋 Menu")
 
-menu_opcoes = [
+menu = st.sidebar.radio("Navegar para:", [
     "🏠 Dashboard",
     "🏢 Cadastro de Empresas",
     "🗂️ Cadastro de Projetos e Atividades",
     "📝 Lançamento de Timesheet",
     "📄 Visualizar / Editar Timesheet",
     "📊 Avaliação de Performance — IA"
-]
+])
 
 # -----------------------------
 # Conteúdo das Páginas
