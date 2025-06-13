@@ -14,7 +14,7 @@ import plotly.express as px
 import re
 
 st.set_page_config(page_title="Timesheet Fiscal", layout="wide")
-st.write("Hoje:", pd.Timestamp.today())
+st.sidebar.markdown(f"📅 Hoje é: **{date.today().strftime('%d/%m/%Y')}**")
 
 # -----------------------------
 # Validação Usuários
