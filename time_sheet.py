@@ -876,13 +876,33 @@ elif menu == "📄 Visualizar / Editar Timesheet":
         ])
     
         valor_atual = linha[col_editar]
+    
         if col_editar == "Data":
-            novo_valor = st.date_input("Nova Data", value=valor_atual.date() if pd.notnull(valor_atual) else date.today())
+            if isinstance(valor_atual, str):
+                valor_atual = pd.to_datetime(valor_atual, errors="coerce")
+    
+            novo_valor = st.date_input(
+                "Nova Data",
+                value=valor_atual.date() if pd.notnull(valor_atual) else date.today()
+            )
+    
+            # Mostra a data formatada para o usuário
+            st.markdown(f"📅 Data selecionada: **{novo_valor.strftime('%d/%m/%Y')}**")
+    
+            # Converte para datetime para manter consistência no DataFrame
             novo_valor = pd.to_datetime(novo_valor)
+    
         elif col_editar == "Quantidade":
-            novo_valor = st.number_input("Nova Quantidade", value=int(valor_atual) if pd.notnull(valor_atual) else 0)
+            novo_valor = st.number_input(
+                "Nova Quantidade",
+                value=int(valor_atual) if pd.notnull(valor_atual) else 0
+            )
+    
         else:
-            novo_valor = st.text_input("Novo Valor", value=str(valor_atual) if pd.notnull(valor_atual) else "")
+            novo_valor = st.text_input(
+                "Novo Valor",
+                value=str(valor_atual) if pd.notnull(valor_atual) else ""
+            )
     
         if st.button("💾 Atualizar Registro"):
             df_timesheet.at[indice, col_editar] = novo_valor
