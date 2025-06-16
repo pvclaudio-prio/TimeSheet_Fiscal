@@ -111,7 +111,7 @@ def obter_pasta_ts_fiscal(drive):
         return pasta['id']
 
 # 📥 Carregar arquivo
-def carregar_arquivo(nome_arquivo, colunas_esperadas):
+def carregar_arquivo(nome_arquivo):
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
@@ -129,30 +129,14 @@ def carregar_arquivo(nome_arquivo, colunas_esperadas):
 
     caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
     arquivos[0].GetContentFile(caminho_temp)
-
-    try:
-        df = pd.read_csv(
-            caminho_temp, 
-            sep=";", 
-            encoding="utf-8-sig", 
-            on_bad_lines='skip'
-        )
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar o CSV '{nome_arquivo}': {e}")
-        st.stop()
+    df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
 
     if df.empty:
-        st.warning(f"⚠️ A base '{nome_arquivo}' foi carregada, mas está vazia.")
+        st.warning("⚠️ A base foi carregada mas está vazia.")
 
-    # ✔️ Verificar integridade das colunas
-    if set(colunas_esperadas) != set(df.columns):
-        st.error(
-            f"❌ As colunas da base '{nome_arquivo}' estão incorretas.\n"
-            f"Esperado: {colunas_esperadas}\n"
-            f"Encontrado: {df.columns.tolist()}\n"
-            f"Verifique se o arquivo não está corrompido ou foi alterado manualmente no Drive."
-        )
-        st.stop()
+    # Tratamento padrão de data e horas
+    df = tratar_coluna_data(df)
+    df = normalizar_coluna_horas(df)
 
     return df
 
