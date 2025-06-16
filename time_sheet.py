@@ -67,6 +67,7 @@ admin_users = ["cvieira", "wreis", "waraujo", "iassis"]
 # Funções Auxiliares
 # -----------------------------
 
+# 🚀 Conexão com Google Drive
 def conectar_drive():
     cred_dict = st.secrets["credentials"]
     credentials = OAuth2Credentials(
@@ -86,14 +87,15 @@ def conectar_drive():
         credentials.refresh(http)
     except Exception as e:
         st.error(f"Erro ao atualizar credenciais: {e}")
+        st.stop()
 
     gauth = GoogleAuth()
     gauth.credentials = credentials
     drive = GoogleDrive(gauth)
     return drive
 
+# 🚩 Obter pasta ts-fiscal
 def obter_pasta_ts_fiscal(drive):
-    # Verifica se a pasta 'ts-fiscal' existe
     lista = drive.ListFile({
         'q': "title='ts-fiscal' and mimeType='application/vnd.google-apps.folder' and trashed=false"
     }).GetList()
@@ -101,7 +103,6 @@ def obter_pasta_ts_fiscal(drive):
     if lista:
         return lista[0]['id']
     else:
-        # Cria a pasta caso não exista
         pasta = drive.CreateFile({
             'title': 'ts-fiscal',
             'mimeType': 'application/vnd.google-apps.folder'
@@ -109,6 +110,7 @@ def obter_pasta_ts_fiscal(drive):
         pasta.Upload()
         return pasta['id']
 
+# 📥 Carregar arquivo
 def carregar_arquivo(nome_arquivo):
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
@@ -122,7 +124,7 @@ def carregar_arquivo(nome_arquivo):
         st.stop()
 
     if not arquivos:
-        st.error(f"❌ Arquivo '{nome_arquivo}' não encontrado no Google Drive.\nOperação interrompida para evitar sobrescrita acidental.")
+        st.error(f"❌ Arquivo '{nome_arquivo}' não encontrado no Google Drive.")
         st.stop()
 
     caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
@@ -130,18 +132,15 @@ def carregar_arquivo(nome_arquivo):
     df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
 
     if df.empty:
-        st.warning("⚠️ A base foi carregada mas está vazia. Verifique o histórico de versões no Google Drive.")
+        st.warning("⚠️ A base foi carregada mas está vazia.")
 
-    # 🚩 Adicionar tratamento padrão
-    if "Data" in df.columns:
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce", dayfirst=True)
-        df = df[df["Data"].notnull()]
-
-    if "Horas Gastas" in df.columns:
-        df["Horas Gastas"] = df["Horas Gastas"].astype(str).apply(formatar_horas)
+    # Tratamento padrão de data e horas
+    df = tratar_coluna_data(df)
+    df = normalizar_coluna_horas(df)
 
     return df
 
+# 💾 Salvar arquivo
 def salvar_arquivo(df, nome_arquivo):
     df.to_csv(nome_arquivo, sep=";", index=False, encoding="utf-8-sig")
     drive = conectar_drive()
@@ -163,64 +162,26 @@ def salvar_arquivo(df, nome_arquivo):
     arquivo.Upload()
     salvar_backup_redundante(df, nome_base=nome_arquivo)
 
+# 🏢 Carregar e salvar empresas
 def carregar_empresas():
-    drive = conectar_drive()
-    pasta_id = obter_pasta_ts_fiscal(drive)
-
-    arquivos = drive.ListFile({
-        'q': f"'{pasta_id}' in parents and title = 'empresas.csv' and trashed=false"
-    }).GetList()
-
-    if not arquivos:
-        df = pd.DataFrame(columns=["Codigo SAP", "Nome Empresa", "Descrição"])
-        df.to_csv("empresas.csv", sep=";", index=False, encoding="utf-8-sig")
-        arquivo = drive.CreateFile({
-            'title': 'empresas.csv',
-            'parents': [{'id': pasta_id}]
-        })
-        arquivo.SetContentFile("empresas.csv")
-        arquivo.Upload()
-        return df
-
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
-    arquivos[0].GetContentFile(caminho_temp)
-    df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
+    df = carregar_arquivo("empresas.csv")
     return df
 
 def salvar_empresas(df):
-    df.to_csv("empresas.csv", sep=";", index=False, encoding="utf-8-sig")
-    drive = conectar_drive()
-    pasta_id = obter_pasta_ts_fiscal(drive)
+    salvar_arquivo(df, "empresas.csv")
 
-    arquivos = drive.ListFile({
-        'q': f"'{pasta_id}' in parents and title = 'empresas.csv' and trashed=false"
-    }).GetList()
-
-    if arquivos:
-        arquivo = arquivos[0]
-    else:
-        arquivo = drive.CreateFile({
-            'title': 'empresas.csv',
-            'parents': [{'id': pasta_id}]
-        })
-
-    arquivo.SetContentFile("empresas.csv")
-    arquivo.Upload()
-
+# ⏰ Tratamento de horas
 def formatar_horas(horas_input):
     if not horas_input:
         return None
+    horas_input = str(horas_input).strip().replace(",", ".")
+    pattern = re.fullmatch(r"(\d{1,2})[:;.,](\d{1,2})", horas_input)
 
-    horas_input = horas_input.strip().replace(",", ".")  # troca vírgula por ponto
-    pattern_hhmm = re.fullmatch(r"(\d{1,2})[:;.,](\d{1,2})", horas_input)
-
-    # Caso esteja no formato HH:MM ou semelhante
-    if pattern_hhmm:
-        h, m = map(int, pattern_hhmm.groups())
+    if pattern:
+        h, m = map(int, pattern.groups())
         if 0 <= h < 24 and 0 <= m < 60:
             return f"{h:02d}:{m:02d}"
 
-    # Caso seja decimal (ex: 0.25 ou 1.5)
     try:
         decimal = float(horas_input)
         total_minutos = int(round(decimal * 60))
@@ -229,31 +190,24 @@ def formatar_horas(horas_input):
         return f"{h:02d}:{m:02d}"
     except:
         return None
-        
+
 def normalizar_coluna_horas(df, coluna="Horas Gastas"):
-    df[coluna] = df[coluna].astype(str).apply(formatar_horas)
+    if coluna in df.columns:
+        df[coluna] = df[coluna].astype(str).apply(formatar_horas)
     return df
 
-def padronizar_coluna_data(df, coluna="Data"):
-    df[coluna] = pd.to_datetime(df[coluna], errors="coerce", dayfirst=True)
-    df = df[df[coluna].notnull()]  # remove linhas com datas inválidas
-    df[coluna] = df[coluna].dt.strftime("%d/%m/%Y")
-    return df
-
+# 📅 Tratamento de data
 def tratar_coluna_data(df, coluna="Data"):
     if coluna in df.columns:
         df[coluna] = pd.to_datetime(df[coluna], errors="coerce", dayfirst=True)
         df = df[df[coluna].notnull()]
     return df
 
+# 🗂️ Backup redundante
 def salvar_backup_redundante(df, nome_base="timesheet.csv"):
-    from pathlib import Path
-
-    # 1. Conecta ao Google Drive
     drive = conectar_drive()
     pasta_principal_id = obter_pasta_ts_fiscal(drive)
 
-    # 2. Verifica se a subpasta "Backup" existe
     lista = drive.ListFile({
         'q': f"'{pasta_principal_id}' in parents and title='Backup' and mimeType='application/vnd.google-apps.folder' and trashed=false"
     }).GetList()
@@ -261,7 +215,6 @@ def salvar_backup_redundante(df, nome_base="timesheet.csv"):
     if lista:
         pasta_backup_id = lista[0]['id']
     else:
-        # Cria a pasta de backup dentro de ts-fiscal
         pasta = drive.CreateFile({
             'title': 'Backup',
             'mimeType': 'application/vnd.google-apps.folder',
@@ -270,7 +223,6 @@ def salvar_backup_redundante(df, nome_base="timesheet.csv"):
         pasta.Upload()
         pasta_backup_id = pasta['id']
 
-    # 3. Descobre o próximo número sequencial disponível
     arquivos_backup = drive.ListFile({
         'q': f"'{pasta_backup_id}' in parents and title contains 'timesheet(' and trashed=false"
     }).GetList()
@@ -284,11 +236,9 @@ def salvar_backup_redundante(df, nome_base="timesheet.csv"):
 
     nome_versao = f"timesheet({proximo_numero}).csv"
 
-    # 4. Salva CSV temporariamente
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
     df.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
 
-    # 5. Envia ao Drive
     arquivo_backup = drive.CreateFile({
         'title': nome_versao,
         'parents': [{'id': pasta_backup_id}]
