@@ -124,17 +124,42 @@ def carregar_arquivo(nome_arquivo):
         st.stop()
 
     if not arquivos:
-        st.error(f"❌ Arquivo '{nome_arquivo}' não encontrado no Google Drive.")
+        st.error(f"❌ Arquivo '{nome_arquivo}' não encontrado no Google Drive.\nOperação interrompida para evitar sobrescrita acidental.")
         st.stop()
 
     caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
     arquivos[0].GetContentFile(caminho_temp)
-    df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
 
+    try:
+        df = pd.read_csv(
+            caminho_temp, 
+            sep=";", 
+            encoding="utf-8-sig", 
+            on_bad_lines='skip'  # Ignora linhas quebradas na leitura
+        )
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar o CSV '{nome_arquivo}': {e}")
+        st.stop()
+
+    # ✔️ Verificar se está vazio
     if df.empty:
-        st.warning("⚠️ A base foi carregada mas está vazia.")
+        st.warning(f"⚠️ A base '{nome_arquivo}' foi carregada, mas está vazia. Verifique o arquivo no Google Drive.")
 
-    # Tratamento padrão de data e horas
+    # ✔️ Verificar integridade das colunas
+    colunas_esperadas = [
+        'Usuário', 'Nome', 'Data', 'Empresa', 'Projeto', 
+        'Time', 'Atividade', 'Quantidade', 'Horas Gastas', 'Observações'
+    ]
+    if set(colunas_esperadas) != set(df.columns):
+        st.error(
+            f"❌ As colunas da base '{nome_arquivo}' estão incorretas.\n"
+            f"Esperado: {colunas_esperadas}\n"
+            f"Encontrado: {df.columns.tolist()}\n"
+            f"Verifique se o arquivo não está corrompido ou foi alterado manualmente no Drive."
+        )
+        st.stop()
+
+    # ✔️ Tratamento seguro de datas e horas
     df = tratar_coluna_data(df)
     df = normalizar_coluna_horas(df)
 
@@ -142,12 +167,37 @@ def carregar_arquivo(nome_arquivo):
 
 # 💾 Salvar arquivo
 def salvar_arquivo(df, nome_arquivo):
-    # 🚩 Força para que a coluna Data esteja no formato datetime SEMPRE
+    # 🔍 Validação antes de salvar
+    
+    if df.empty:
+        st.error("❌ Tentando salvar uma base vazia. Operação cancelada para evitar perda de dados.")
+        st.stop()
+
+    colunas_esperadas = [
+        'Usuário', 'Nome', 'Data', 'Empresa', 'Projeto', 
+        'Time', 'Atividade', 'Quantidade', 'Horas Gastas', 'Observações'
+    ]
+
+    if set(df.columns) != set(colunas_esperadas):
+        st.error(
+            f"❌ As colunas da base estão incorretas.\n"
+            f"Esperado: {colunas_esperadas}\n"
+            f"Encontrado: {df.columns.tolist()}\n"
+            f"Salvamento abortado para proteger os dados."
+        )
+        st.stop()
+
+    # 🔒 Normalizar a coluna Data para garantir padrão
     if "Data" in df.columns:
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce").dt.strftime("%Y-%m-%d")
 
+    # 🔐 Gerar backup antes de sobrescrever
+    salvar_backup_redundante(df, nome_base=nome_arquivo)
+
+    # 💾 Salvar CSV localmente
     df.to_csv(nome_arquivo, sep=";", index=False, encoding="utf-8-sig")
 
+    # 🔗 Upload para o Google Drive
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
@@ -166,7 +216,7 @@ def salvar_arquivo(df, nome_arquivo):
     arquivo.SetContentFile(nome_arquivo)
     arquivo.Upload()
 
-    salvar_backup_redundante(df, nome_base=nome_arquivo)
+    st.success(f"✅ Arquivo '{nome_arquivo}' salvo e backup criado com sucesso!")
 
 # 🏢 Carregar e salvar empresas
 def carregar_empresas():
@@ -177,53 +227,94 @@ def salvar_empresas(df):
     salvar_arquivo(df, "empresas.csv")
 
 # ⏰ Tratamento de horas
-def formatar_horas(horas_input):
-    if not horas_input:
-        return None
-    horas_input = str(horas_input).strip().replace(",", ".")
-    pattern = re.fullmatch(r"(\d{1,2})[:;.,](\d{1,2})", horas_input)
-
-    if pattern:
-        h, m = map(int, pattern.groups())
-        if 0 <= h < 24 and 0 <= m < 60:
-            return f"{h:02d}:{m:02d}"
-
-    try:
-        decimal = float(horas_input)
-        total_minutos = int(round(decimal * 60))
-        h = total_minutos // 60
-        m = total_minutos % 60
-        return f"{h:02d}:{m:02d}"
-    except:
-        return None
-
 def normalizar_coluna_horas(df, coluna="Horas Gastas"):
-    if coluna in df.columns:
-        df[coluna] = df[coluna].astype(str).apply(formatar_horas)
+    if coluna not in df.columns:
+        st.error(f"❌ A coluna '{coluna}' não existe no dataframe. Operação cancelada.")
+        st.stop()
+
+    def formatar_horas(horas_input):
+        if pd.isna(horas_input) or str(horas_input).strip() == "":
+            return None
+
+        horas_input = str(horas_input).strip().replace(",", ".")
+        pattern = re.fullmatch(r"(\d{1,2})[:;.,](\d{1,2})", horas_input)
+
+        # 🔸 Caso esteja no formato HH:MM ou similar
+        if pattern:
+            h, m = map(int, pattern.groups())
+            if 0 <= h < 24 and 0 <= m < 60:
+                return f"{h:02d}:{m:02d}"
+
+        # 🔸 Caso seja decimal (ex.: 1.5 ou 0,75)
+        try:
+            decimal = float(horas_input)
+            total_minutos = int(round(decimal * 60))
+            h = total_minutos // 60
+            m = total_minutos % 60
+            return f"{h:02d}:{m:02d}"
+        except:
+            return None
+
+    # ✔️ Aplicar a função de normalização
+    df[coluna] = df[coluna].astype(str).apply(formatar_horas)
+
+    # 🚩 Verificar se ficaram valores inválidos (None)
+    linhas_invalidas = df[df[coluna].isnull()]
+    if not linhas_invalidas.empty:
+        st.warning(
+            f"⚠️ Foram encontradas {len(linhas_invalidas)} linhas com horas inválidas na coluna '{coluna}'. "
+            "Verifique esses registros na interface ou no CSV."
+        )
+
     return df
 
 # 📅 Tratamento de data
 def tratar_coluna_data(df, coluna="Data"):
     if coluna in df.columns:
-        # Primeiro tenta ler padrão ISO (YYYY-MM-DD) sem ambiguidades
-        df[coluna] = pd.to_datetime(df[coluna], errors="coerce", format="%Y-%m-%d")
+        try:
+            # 🔍 Primeiro tenta carregar no formato padrão ISO (YYYY-MM-DD)
+            df[coluna] = pd.to_datetime(df[coluna], format='%Y-%m-%d', errors='coerce')
+            
+            # 🚩 Se ainda restarem NaT, tenta formatos brasileiros como DD/MM/YYYY
+            if df[coluna].isnull().sum() > 0:
+                df.loc[df[coluna].isnull(), coluna] = pd.to_datetime(
+                    df.loc[df[coluna].isnull(), coluna],
+                    dayfirst=True,
+                    errors='coerce'
+                )
 
-        # Se ainda tiver datas NaT, tenta outros formatos comuns
-        if df[coluna].isnull().sum() > 0:
-            df.loc[df[coluna].isnull(), coluna] = pd.to_datetime(
-                df.loc[df[coluna].isnull(), coluna], errors="coerce", dayfirst=True
-            )
+            # 🔥 Se ainda houver NaT, gera alerta
+            if df[coluna].isnull().sum() > 0:
+                linhas_invalidas = df[df[coluna].isnull()]
+                st.warning(
+                    f"⚠️ Foram encontradas {len(linhas_invalidas)} linhas com datas inválidas na coluna '{coluna}'. "
+                    "Essas linhas serão removidas do dataframe."
+                )
+                df = df[df[coluna].notnull()]
 
-        df = df[df[coluna].notnull()]  # Remove linhas inválidas
+        except Exception as e:
+            st.error(f"❌ Erro ao tratar a coluna '{coluna}': {e}")
+            st.stop()
+
     return df
 
 # 🗂️ Backup redundante
 def salvar_backup_redundante(df, nome_base="timesheet.csv"):
+    from pathlib import Path
+
+    # 🚩 Segurança extra: se o dataframe estiver vazio, não faz backup
+    if df.empty:
+        st.warning("⚠️ A base está vazia. Backup não gerado para evitar salvar uma base corrompida.")
+        return
+
+    # 🔗 Conectar ao Google Drive
     drive = conectar_drive()
     pasta_principal_id = obter_pasta_ts_fiscal(drive)
 
+    # 🔍 Verificar se a subpasta Backup existe
     lista = drive.ListFile({
-        'q': f"'{pasta_principal_id}' in parents and title='Backup' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        'q': f"'{pasta_principal_id}' in parents and title='Backup' "
+             "and mimeType='application/vnd.google-apps.folder' and trashed=false"
     }).GetList()
 
     if lista:
@@ -237,22 +328,25 @@ def salvar_backup_redundante(df, nome_base="timesheet.csv"):
         pasta.Upload()
         pasta_backup_id = pasta['id']
 
+    # 🔢 Verificar os arquivos já existentes para criar um sequencial
     arquivos_backup = drive.ListFile({
-        'q': f"'{pasta_backup_id}' in parents and title contains 'timesheet(' and trashed=false"
+        'q': f"'{pasta_backup_id}' in parents and title contains '{nome_base[:-4]}(' and trashed=false"
     }).GetList()
 
-    padrao = re.compile(r"timesheet\((\d+)\)\.csv$")
+    padrao = re.compile(rf"{re.escape(nome_base[:-4])}\((\d+)\)\.csv$")
     numeros_existentes = [
         int(match.group(1)) for arq in arquivos_backup
         if (match := padrao.search(arq['title']))
     ]
     proximo_numero = max(numeros_existentes, default=0) + 1
 
-    nome_versao = f"timesheet({proximo_numero}).csv"
+    nome_versao = f"{nome_base[:-4]}({proximo_numero}).csv"
 
+    # 💾 Salvar CSV temporariamente
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
     df.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
 
+    # ☁️ Enviar backup para o Google Drive
     arquivo_backup = drive.CreateFile({
         'title': nome_versao,
         'parents': [{'id': pasta_backup_id}]
@@ -260,6 +354,7 @@ def salvar_backup_redundante(df, nome_base="timesheet.csv"):
     arquivo_backup.SetContentFile(caminho_temp)
     arquivo_backup.Upload()
 
+    st.success(f"✅ Backup '{nome_versao}' gerado com sucesso.")
 # -----------------------------
 # Menu Latereal
 # -----------------------------
