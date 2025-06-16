@@ -239,7 +239,13 @@ def padronizar_coluna_data(df, coluna="Data"):
     df = df[df[coluna].notnull()]  # remove linhas com datas inválidas
     df[coluna] = df[coluna].dt.strftime("%d/%m/%Y")
     return df
-    
+
+def tratar_coluna_data(df, coluna="Data"):
+    if coluna in df.columns:
+        df[coluna] = pd.to_datetime(df[coluna], errors="coerce", dayfirst=True)
+        df = df[df[coluna].notnull()]
+    return df
+
 def salvar_backup_redundante(df, nome_base="timesheet.csv"):
     from pathlib import Path
 
