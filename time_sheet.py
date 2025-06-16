@@ -314,9 +314,7 @@ if menu == "🏠 Dashboard":
 
     # 🔗 Carregar Dados
     df_timesheet = carregar_arquivo(
-        "timesheet.csv",
-        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
-    )
+        "timesheet.csv")
     df_timesheet = normalizar_coluna_horas(df_timesheet)
     df_timesheet = padronizar_coluna_data(df_timesheet)
 
@@ -565,7 +563,7 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
     st.title("🗂️ Cadastro de Projetos e Atividades")
     st.markdown("## 🏗️ Projetos")
 
-    df_projetos = carregar_arquivo("projetos.csv", ["Nome Projeto", "Time", "Status"])
+    df_projetos = carregar_arquivo("projetos.csv")
     
     with st.form("form_projeto"):
         nome_projeto = st.text_input("Nome do Projeto")
@@ -631,7 +629,7 @@ elif menu == "🗂️ Cadastro de Projetos e Atividades":
     st.markdown("---")
     st.markdown("## 🗒️ Atividades")
     
-    df_atividades = carregar_arquivo("atividades.csv", ["Nome Atividade", "Projeto Vinculado", "Descrição", "Status"])
+    df_atividades = carregar_arquivo("atividades.csv")
     
     with st.form("form_atividade"):
         nome_atividade = st.text_input("Nome da Atividade")
@@ -708,13 +706,11 @@ elif menu == "📝 Lançamento de Timesheet":
     nome_usuario = users[usuario_logado]["name"]
 
     # 🔸 Carregar Bases
-    df_empresas = carregar_arquivo("empresas.csv", ["Codigo SAP", "Nome Empresa", "Descrição"])
-    df_projetos = carregar_arquivo("projetos.csv", ["Nome Projeto", "Descrição", "Status", "Time"])
-    df_atividades = carregar_arquivo("atividades.csv", ["Nome Atividade", "Projeto Vinculado", "Descrição", "Status"])
+    df_empresas = carregar_arquivo("empresas.csv")
+    df_projetos = carregar_arquivo("projetos.csv")
+    df_atividades = carregar_arquivo("atividades.csv")
     df_timesheet = carregar_arquivo(
-        "timesheet.csv",
-        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
-    )
+        "timesheet.csv")
     df_timesheet = normalizar_coluna_horas(df_timesheet)
     df_timesheet = padronizar_coluna_data(df_timesheet)
 
@@ -959,9 +955,7 @@ elif menu == "📊 Avaliação de Performance — IA":
     
     # 🔗 Carregar Dados
     df_timesheet = carregar_arquivo(
-        "timesheet.csv",
-        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
-    )
+        "timesheet.csv")
     df_timesheet = normalizar_coluna_horas(df_timesheet)
     
     if df_timesheet.empty:
