@@ -199,8 +199,16 @@ def normalizar_coluna_horas(df, coluna="Horas Gastas"):
 # 📅 Tratamento de data
 def tratar_coluna_data(df, coluna="Data"):
     if coluna in df.columns:
-        df[coluna] = pd.to_datetime(df[coluna], errors="coerce", dayfirst=True)
-        df = df[df[coluna].notnull()]
+        # Primeiro tenta ler padrão ISO (YYYY-MM-DD) sem ambiguidades
+        df[coluna] = pd.to_datetime(df[coluna], errors="coerce", format="%Y-%m-%d")
+
+        # Se ainda tiver datas NaT, tenta outros formatos comuns
+        if df[coluna].isnull().sum() > 0:
+            df.loc[df[coluna].isnull(), coluna] = pd.to_datetime(
+                df.loc[df[coluna].isnull(), coluna], errors="coerce", dayfirst=True
+            )
+
+        df = df[df[coluna].notnull()]  # Remove linhas inválidas
     return df
 
 # 🗂️ Backup redundante
