@@ -109,7 +109,7 @@ def obter_pasta_ts_fiscal(drive):
         pasta.Upload()
         return pasta['id']
 
-def carregar_arquivo(nome_arquivo, colunas):
+def carregar_arquivo(nome_arquivo):
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
@@ -129,9 +129,16 @@ def carregar_arquivo(nome_arquivo, colunas):
     arquivos[0].GetContentFile(caminho_temp)
     df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
 
-    # Segurança extra: se vier vazio e não deveria
     if df.empty:
         st.warning("⚠️ A base foi carregada mas está vazia. Verifique o histórico de versões no Google Drive.")
+
+    # 🚩 Adicionar tratamento padrão
+    if "Data" in df.columns:
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce", dayfirst=True)
+        df = df[df["Data"].notnull()]
+
+    if "Horas Gastas" in df.columns:
+        df["Horas Gastas"] = df["Horas Gastas"].astype(str).apply(formatar_horas)
 
     return df
 
@@ -739,7 +746,7 @@ elif menu == "📝 Lançamento de Timesheet":
 
         quantidade = st.number_input("Quantidade Tarefas", min_value=0, step=1)
 
-        tempo = st.time_input("Horas Gastas", value=time(0, 0))  # <-- Valor padrão 00:00
+        tempo = st.time_input("Horas Gastas", value=time(0, 0)) 
         horas = f"{tempo.hour:02d}:{tempo.minute:02d}"
 
         observacoes = st.text_area("Observações", placeholder="Descreva detalhes relevantes sobre este lançamento...")
@@ -753,7 +760,7 @@ elif menu == "📝 Lançamento de Timesheet":
                 novo = pd.DataFrame({
                     "Usuário": [usuario_logado],
                     "Nome": [nome_usuario],
-                    "Data": [data.strftime("%d/%m/%Y")],
+                    "Data": [data],
                     "Empresa": [empresa],
                     "Projeto": [projeto],
                     "Time": [time_opcao],
@@ -777,26 +784,21 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     nome_usuario = users[usuario_logado]["name"]
 
     # 🔸 Carregar Dados
-    df_timesheet = carregar_arquivo(
-        "timesheet.csv",
-        ["Usuário", "Nome", "Data", "Empresa", "Projeto", "Time", "Atividade", "Quantidade", "Horas Gastas", "Observações"]
-    )
+    df_timesheet = carregar_arquivo("timesheet.csv")
     df_timesheet = normalizar_coluna_horas(df_timesheet)
-    df_timesheet = padronizar_coluna_data(df_timesheet)
-    
-    # 🔧 Tratamento de datas
-    if not df_timesheet.empty:
-        df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors="coerce")
-    
-    # 🔐 Filtrar por usuário logado
-    usuario_logado = st.session_state.username
-    
+
+    # 🔧 Garantir que a coluna Data está corretamente tratada
+    if "Data" in df_timesheet.columns:
+        df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors="coerce", dayfirst=True)
+        df_timesheet = df_timesheet[df_timesheet["Data"].notnull()]
+
+    # 🔐 Filtrar por usuário logado (não admins só veem seus dados)
     if usuario_logado not in admin_users:
         df_timesheet = df_timesheet[df_timesheet["Usuário"] == usuario_logado]
-    
-    # 🔍 Filtros
+
+    # 🔍 Filtros na sidebar
     st.sidebar.subheader("🔍 Filtros")
-    
+
     data_inicial, data_final = st.sidebar.date_input(
         "Período:",
         [
@@ -804,12 +806,12 @@ elif menu == "📄 Visualizar / Editar Timesheet":
             df_timesheet["Data"].max().date() if not df_timesheet.empty else date.today()
         ]
     )
-    
+
     empresa = st.sidebar.selectbox(
         "Empresa:",
         ["Todas"] + sorted(df_timesheet["Empresa"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todas"]
     )
-    
+
     projeto = st.sidebar.selectbox(
         "Projeto:",
         ["Todos"] + sorted(df_timesheet["Projeto"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todos"]
@@ -819,13 +821,12 @@ elif menu == "📄 Visualizar / Editar Timesheet":
         "Time:",
         ["Todos"] + sorted(df_timesheet["Time"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todos"]
     )
-    
+
     atividade = st.sidebar.selectbox(
         "Atividade:",
         ["Todas"] + sorted(df_timesheet["Atividade"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todas"]
     )
-    
-    # Filtro de usuário (apenas admins veem)
+
     if usuario_logado in admin_users:
         usuario = st.sidebar.selectbox(
             "Nome:",
@@ -833,112 +834,112 @@ elif menu == "📄 Visualizar / Editar Timesheet":
         )
     else:
         usuario = usuario_logado
-    
-    # 🔸 Aplicando filtros
+
+    # 🔸 Aplicar filtros
     df_filtrado = df_timesheet.copy()
-    
+
     if empresa != "Todas":
         df_filtrado = df_filtrado[df_filtrado["Empresa"] == empresa]
-    
+
     if projeto != "Todos":
         df_filtrado = df_filtrado[df_filtrado["Projeto"] == projeto]
 
     if time != "Todos":
         df_filtrado = df_filtrado[df_filtrado["Time"] == time]
-    
+
     if atividade != "Todas":
         df_filtrado = df_filtrado[df_filtrado["Atividade"] == atividade]
-    
+
     if usuario != "Todos":
         df_filtrado = df_filtrado[df_filtrado["Usuário"] == usuario]
 
-    df_filtrado["Data"] = pd.to_datetime(df_filtrado["Data"], errors="coerce")
+    # 🔍 Filtro de período
     df_filtrado = df_filtrado[
         (df_filtrado["Data"].dt.date >= data_inicial) &
         (df_filtrado["Data"].dt.date <= data_final)
     ].sort_values(by="Data")
-    
+
     # 🔸 Visualização
     df_visual = df_filtrado.copy()
     df_visual["Data"] = df_visual["Data"].dt.strftime("%d/%m/%Y")
-    
-    st.markdown(f"### 🔍 {len(df_visual)} registros encontrados")
-    st.dataframe(df_visual, use_container_width=True)
 
-    # 🔸 Edição
+    st.markdown(f"### 🔍 {len(df_visual)} registros encontrados")
+
+    if df_visual.empty:
+        st.info("🚩 Nenhum registro encontrado com os filtros aplicados.")
+    else:
+        st.dataframe(df_visual, use_container_width=True)
+
+    # 🔸 Edição de Registro
     st.markdown("---")
     st.subheader("✏️ Editar um Registro")
-    
+
     if not df_filtrado.empty:
         indice = st.selectbox("Selecione o índice para editar:", df_filtrado.index.tolist())
-    
+
         linha = df_filtrado.loc[indice]
-    
+
         col_editar = st.selectbox("Coluna:", [
             "Data", "Nome", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"
         ])
-    
+
         valor_atual = linha[col_editar]
-    
+
         if col_editar == "Data":
-            if isinstance(valor_atual, str):
-                valor_atual = pd.to_datetime(valor_atual, errors="coerce")
-    
             novo_valor = st.date_input(
                 "Nova Data",
                 value=valor_atual.date() if pd.notnull(valor_atual) else date.today()
             )
-    
-            # Mostra a data formatada para o usuário
             st.markdown(f"📅 Data selecionada: **{novo_valor.strftime('%d/%m/%Y')}**")
-    
-            # Converte para datetime para manter consistência no DataFrame
             novo_valor = pd.to_datetime(novo_valor)
-    
+
         elif col_editar == "Quantidade":
             novo_valor = st.number_input(
                 "Nova Quantidade",
                 value=int(valor_atual) if pd.notnull(valor_atual) else 0
             )
-    
+
         else:
             novo_valor = st.text_input(
                 "Novo Valor",
                 value=str(valor_atual) if pd.notnull(valor_atual) else ""
             )
-    
+
         if st.button("💾 Atualizar Registro"):
             df_timesheet.at[indice, col_editar] = novo_valor
             salvar_arquivo(df_timesheet, "timesheet.csv")
             st.success(f"✅ Registro atualizado com sucesso!")
             st.experimental_rerun()
-    
-    # 🔸 Exclusão
+
+    # 🔸 Exclusão de Registro
     st.markdown("---")
     st.subheader("🗑️ Excluir um Registro")
-    
+
     if not df_filtrado.empty:
         indice_excluir = st.selectbox("Índice para excluir:", df_filtrado.index.tolist(), key="excluir")
-    
+
         linha = df_filtrado.loc[indice_excluir]
         st.markdown("**Registro selecionado:**")
         st.json(linha.to_dict())
-    
+
         confirmar = st.radio("⚠️ Confirmar Exclusão?", ["Não", "Sim"], horizontal=True, key="confirmar_excluir")
-    
+
         if confirmar == "Sim":
             if st.button("🗑️ Confirmar Exclusão"):
                 df_timesheet = df_timesheet.drop(index=indice_excluir)
                 salvar_arquivo(df_timesheet, "timesheet.csv")
                 st.success("✅ Registro excluído com sucesso!")
                 st.experimental_rerun()
-    
-    # 🔸 Exportação
+
+    # 🔸 Exportação dos Dados
     st.markdown("---")
     st.subheader("📥 Exportar Dados")
-    
-    buffer = df_filtrado.to_csv(index=False, sep=";", encoding="utf-8-sig").encode()
-    
+
+    df_export = df_filtrado.copy()
+    df_export["Data"] = df_export["Data"].dt.strftime("%d/%m/%Y")
+
+    buffer = df_export.to_csv(index=False, sep=";", encoding="utf-8-sig").encode()
+
     st.download_button(
         label="📥 Baixar Tabela",
         data=buffer,
