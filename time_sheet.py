@@ -111,7 +111,7 @@ def obter_pasta_ts_fiscal(drive):
         return pasta['id']
 
 # 📥 Carregar arquivo
-def carregar_arquivo(nome_arquivo):
+def carregar_arquivo(nome_arquivo, colunas_esperadas):
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
@@ -124,7 +124,7 @@ def carregar_arquivo(nome_arquivo):
         st.stop()
 
     if not arquivos:
-        st.error(f"❌ Arquivo '{nome_arquivo}' não encontrado no Google Drive.\nOperação interrompida para evitar sobrescrita acidental.")
+        st.error(f"❌ Arquivo '{nome_arquivo}' não encontrado no Google Drive.")
         st.stop()
 
     caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
@@ -135,21 +135,16 @@ def carregar_arquivo(nome_arquivo):
             caminho_temp, 
             sep=";", 
             encoding="utf-8-sig", 
-            on_bad_lines='skip'  # Ignora linhas quebradas na leitura
+            on_bad_lines='skip'
         )
     except Exception as e:
         st.error(f"❌ Erro ao carregar o CSV '{nome_arquivo}': {e}")
         st.stop()
 
-    # ✔️ Verificar se está vazio
     if df.empty:
-        st.warning(f"⚠️ A base '{nome_arquivo}' foi carregada, mas está vazia. Verifique o arquivo no Google Drive.")
+        st.warning(f"⚠️ A base '{nome_arquivo}' foi carregada, mas está vazia.")
 
     # ✔️ Verificar integridade das colunas
-    colunas_esperadas = [
-        'Usuário', 'Nome', 'Data', 'Empresa', 'Projeto', 
-        'Time', 'Atividade', 'Quantidade', 'Horas Gastas', 'Observações'
-    ]
     if set(colunas_esperadas) != set(df.columns):
         st.error(
             f"❌ As colunas da base '{nome_arquivo}' estão incorretas.\n"
@@ -158,10 +153,6 @@ def carregar_arquivo(nome_arquivo):
             f"Verifique se o arquivo não está corrompido ou foi alterado manualmente no Drive."
         )
         st.stop()
-
-    # ✔️ Tratamento seguro de datas e horas
-    df = tratar_coluna_data(df)
-    df = normalizar_coluna_horas(df)
 
     return df
 
