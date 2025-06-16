@@ -272,7 +272,7 @@ if menu == "🏠 Dashboard":
     df_timesheet = carregar_arquivo(
         "timesheet.csv")
     df_timesheet = normalizar_coluna_horas(df_timesheet)
-    df_timesheet = padronizar_coluna_data(df_timesheet)
+    df_timesheet = tratar_coluna_data(df_timesheet)
 
     if df_timesheet.empty:
         st.info("⚠️ Não há dados no timesheet para gerar dashboard.")
@@ -668,7 +668,7 @@ elif menu == "📝 Lançamento de Timesheet":
     df_timesheet = carregar_arquivo(
         "timesheet.csv")
     df_timesheet = normalizar_coluna_horas(df_timesheet)
-    df_timesheet = padronizar_coluna_data(df_timesheet)
+    df_timesheet = tratar_coluna_data(df_timesheet)
 
     # 🔸 Seleção de Projeto e Atividade
     projeto = st.selectbox(
