@@ -715,7 +715,14 @@ elif menu == "📝 Lançamento de Timesheet":
         tempo = st.time_input("Horas Gastas", value=time(0, 0)) 
         horas = f"{tempo.hour:02d}:{tempo.minute:02d}"
 
-        observacoes = st.text_area("Observações", placeholder="Descreva detalhes relevantes sobre este lançamento...")
+        observacoes = st.text_area(
+            "Observações", 
+            placeholder="Descreva detalhes relevantes sobre este lançamento...",
+            height=120,
+            max_chars=500
+        ).replace('\n', ' ') \
+         .replace(';', ',') \
+         .strip()
 
         submitted = st.form_submit_button("💾 Registrar")
 
