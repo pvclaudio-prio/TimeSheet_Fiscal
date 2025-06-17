@@ -177,94 +177,53 @@ def salvar_empresas(df):
     salvar_arquivo(df, "empresas.csv")
 
 # ⏰ Tratamento de horas
-def normalizar_coluna_horas(df, coluna="Horas Gastas"):
-    if coluna not in df.columns:
-        st.error(f"❌ A coluna '{coluna}' não existe no dataframe. Operação cancelada.")
-        st.stop()
+def formatar_horas(horas_input):
+    if not horas_input:
+        return None
+    horas_input = str(horas_input).strip().replace(",", ".")
+    pattern = re.fullmatch(r"(\d{1,2})[:;.,](\d{1,2})", horas_input)
 
-    def formatar_horas(horas_input):
-        if pd.isna(horas_input) or str(horas_input).strip() == "":
-            return None
-
-        horas_input = str(horas_input).strip().replace(",", ".")
-        pattern = re.fullmatch(r"(\d{1,2})[:;.,](\d{1,2})", horas_input)
-
-        # 🔸 Caso esteja no formato HH:MM ou similar
-        if pattern:
-            h, m = map(int, pattern.groups())
-            if 0 <= h < 24 and 0 <= m < 60:
-                return f"{h:02d}:{m:02d}"
-
-        # 🔸 Caso seja decimal (ex.: 1.5 ou 0,75)
-        try:
-            decimal = float(horas_input)
-            total_minutos = int(round(decimal * 60))
-            h = total_minutos // 60
-            m = total_minutos % 60
+    if pattern:
+        h, m = map(int, pattern.groups())
+        if 0 <= h < 24 and 0 <= m < 60:
             return f"{h:02d}:{m:02d}"
-        except:
-            return None
 
-    # ✔️ Aplicar a função de normalização
-    df[coluna] = df[coluna].astype(str).apply(formatar_horas)
+    try:
+        decimal = float(horas_input)
+        total_minutos = int(round(decimal * 60))
+        h = total_minutos // 60
+        m = total_minutos % 60
+        return f"{h:02d}:{m:02d}"
+    except:
+        return None
 
-    # 🚩 Verificar se ficaram valores inválidos (None)
-    linhas_invalidas = df[df[coluna].isnull()]
-    if not linhas_invalidas.empty:
-        st.warning(
-            f"⚠️ Foram encontradas {len(linhas_invalidas)} linhas com horas inválidas na coluna '{coluna}'. "
-            "Verifique esses registros na interface ou no CSV."
-        )
-
+def normalizar_coluna_horas(df, coluna="Horas Gastas"):
+    if coluna in df.columns:
+        df[coluna] = df[coluna].astype(str).apply(formatar_horas)
     return df
 
 # 📅 Tratamento de data
 def tratar_coluna_data(df, coluna="Data"):
     if coluna in df.columns:
-        try:
-            # 🔍 Primeiro tenta carregar no formato padrão ISO (YYYY-MM-DD)
-            df[coluna] = pd.to_datetime(df[coluna], format='%Y-%m-%d', errors='coerce')
-            
-            # 🚩 Se ainda restarem NaT, tenta formatos brasileiros como DD/MM/YYYY
-            if df[coluna].isnull().sum() > 0:
-                df.loc[df[coluna].isnull(), coluna] = pd.to_datetime(
-                    df.loc[df[coluna].isnull(), coluna],
-                    dayfirst=True,
-                    errors='coerce'
-                )
+        # Primeiro tenta ler padrão ISO (YYYY-MM-DD) sem ambiguidades
+        df[coluna] = pd.to_datetime(df[coluna], errors="coerce", format="%Y-%m-%d")
 
-            # 🔥 Se ainda houver NaT, gera alerta
-            if df[coluna].isnull().sum() > 0:
-                linhas_invalidas = df[df[coluna].isnull()]
-                st.warning(
-                    f"⚠️ Foram encontradas {len(linhas_invalidas)} linhas com datas inválidas na coluna '{coluna}'. "
-                    "Essas linhas serão removidas do dataframe."
-                )
-                df = df[df[coluna].notnull()]
+        # Se ainda tiver datas NaT, tenta outros formatos comuns
+        if df[coluna].isnull().sum() > 0:
+            df.loc[df[coluna].isnull(), coluna] = pd.to_datetime(
+                df.loc[df[coluna].isnull(), coluna], errors="coerce", dayfirst=True
+            )
 
-        except Exception as e:
-            st.error(f"❌ Erro ao tratar a coluna '{coluna}': {e}")
-            st.stop()
-
+        df = df[df[coluna].notnull()]  # Remove linhas inválidas
     return df
 
 # 🗂️ Backup redundante
 def salvar_backup_redundante(df, nome_base="timesheet.csv"):
-    from pathlib import Path
-
-    # 🚩 Segurança extra: se o dataframe estiver vazio, não faz backup
-    if df.empty:
-        st.warning("⚠️ A base está vazia. Backup não gerado para evitar salvar uma base corrompida.")
-        return
-
-    # 🔗 Conectar ao Google Drive
     drive = conectar_drive()
     pasta_principal_id = obter_pasta_ts_fiscal(drive)
 
-    # 🔍 Verificar se a subpasta Backup existe
     lista = drive.ListFile({
-        'q': f"'{pasta_principal_id}' in parents and title='Backup' "
-             "and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        'q': f"'{pasta_principal_id}' in parents and title='Backup' and mimeType='application/vnd.google-apps.folder' and trashed=false"
     }).GetList()
 
     if lista:
@@ -278,25 +237,22 @@ def salvar_backup_redundante(df, nome_base="timesheet.csv"):
         pasta.Upload()
         pasta_backup_id = pasta['id']
 
-    # 🔢 Verificar os arquivos já existentes para criar um sequencial
     arquivos_backup = drive.ListFile({
-        'q': f"'{pasta_backup_id}' in parents and title contains '{nome_base[:-4]}(' and trashed=false"
+        'q': f"'{pasta_backup_id}' in parents and title contains 'timesheet(' and trashed=false"
     }).GetList()
 
-    padrao = re.compile(rf"{re.escape(nome_base[:-4])}\((\d+)\)\.csv$")
+    padrao = re.compile(r"timesheet\((\d+)\)\.csv$")
     numeros_existentes = [
         int(match.group(1)) for arq in arquivos_backup
         if (match := padrao.search(arq['title']))
     ]
     proximo_numero = max(numeros_existentes, default=0) + 1
 
-    nome_versao = f"{nome_base[:-4]}({proximo_numero}).csv"
+    nome_versao = f"timesheet({proximo_numero}).csv"
 
-    # 💾 Salvar CSV temporariamente
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
     df.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
 
-    # ☁️ Enviar backup para o Google Drive
     arquivo_backup = drive.CreateFile({
         'title': nome_versao,
         'parents': [{'id': pasta_backup_id}]
@@ -304,7 +260,6 @@ def salvar_backup_redundante(df, nome_base="timesheet.csv"):
     arquivo_backup.SetContentFile(caminho_temp)
     arquivo_backup.Upload()
 
-    st.success(f"✅ Backup '{nome_versao}' gerado com sucesso.")
 # -----------------------------
 # Menu Latereal
 # -----------------------------
@@ -760,14 +715,7 @@ elif menu == "📝 Lançamento de Timesheet":
         tempo = st.time_input("Horas Gastas", value=time(0, 0)) 
         horas = f"{tempo.hour:02d}:{tempo.minute:02d}"
 
-        observacoes = st.text_area(
-            "Observações", 
-            placeholder="Descreva detalhes relevantes sobre este lançamento...",
-            height=120,
-            max_chars=500
-        ).replace('\n', ' ') \
-         .replace(';', ',') \
-         .strip()
+        observacoes = st.text_area("Observações", placeholder="Descreva detalhes relevantes sobre este lançamento...")
 
         submitted = st.form_submit_button("💾 Registrar")
 
