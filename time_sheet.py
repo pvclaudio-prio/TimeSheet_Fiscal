@@ -96,7 +96,6 @@ def conectar_drive():
 
 
 # 🚩 Obter pasta ts-fiscal
-@st.cache_data
 def obter_pasta_ts_fiscal(drive):
     try:
         lista = drive.ListFile({
