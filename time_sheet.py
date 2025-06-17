@@ -141,12 +141,26 @@ def carregar_arquivo(nome_arquivo):
     return df
 
 # 💾 Salvar arquivo
-def salvar_arquivo(df, nome_arquivo):
-    # 🚩 Força para que a coluna Data esteja no formato datetime SEMPRE
-    if "Data" in df.columns:
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce").dt.strftime("%Y-%m-%d")
+def salvar_arquivo(df_novo, nome_arquivo):
+    try:
+        df_existente = carregar_arquivo(nome_arquivo)
+    except:
+        df_existente = pd.DataFrame(columns=df_novo.columns)
 
-    df.to_csv(nome_arquivo, sep=";", index=False, encoding="utf-8-sig")
+    # Concatenar mantendo todas as colunas
+    df_total = pd.concat([df_existente, df_novo], ignore_index=True)
+
+    # Remover duplicatas baseadas nas chaves essenciais
+    df_total = df_total.drop_duplicates(
+        subset=["Usuário", "Data", "Projeto", "Atividade", "Observações"],
+        keep="last"
+    )
+
+    # Força formato de data
+    if "Data" in df_total.columns:
+        df_total["Data"] = pd.to_datetime(df_total["Data"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+    df_total.to_csv(nome_arquivo, sep=";", index=False, encoding="utf-8-sig")
 
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
@@ -166,7 +180,7 @@ def salvar_arquivo(df, nome_arquivo):
     arquivo.SetContentFile(nome_arquivo)
     arquivo.Upload()
 
-    salvar_backup_redundante(df, nome_base=nome_arquivo)
+    salvar_backup_redundante(df_total, nome_base=nome_arquivo)
 
 # 🏢 Carregar e salvar empresas
 def carregar_empresas():
