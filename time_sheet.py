@@ -86,7 +86,7 @@ def conectar_drive():
     try:
         credentials.refresh(http)
     except Exception as e:
-        st.error(f"❌ Erro ao atualizar credenciais: {e}")
+        st.error(f"Erro ao atualizar credenciais: {e}")
         st.stop()
 
     gauth = GoogleAuth()
@@ -94,30 +94,21 @@ def conectar_drive():
     drive = GoogleDrive(gauth)
     return drive
 
-
 # 🚩 Obter pasta ts-fiscal
 def obter_pasta_ts_fiscal(drive):
-    try:
-        lista = drive.ListFile({
-            'q': "title='ts-fiscal' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-        }).GetList()
-    except Exception as e:
-        st.error(f"❌ Erro ao acessar o Drive: {e}")
-        st.stop()
+    lista = drive.ListFile({
+        'q': "title='ts-fiscal' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    }).GetList()
 
     if lista:
         return lista[0]['id']
     else:
-        try:
-            pasta = drive.CreateFile({
-                'title': 'ts-fiscal',
-                'mimeType': 'application/vnd.google-apps.folder'
-            })
-            pasta.Upload()
-            return pasta['id']
-        except Exception as e:
-            st.error(f"❌ Erro ao criar pasta no Drive: {e}")
-            st.stop()
+        pasta = drive.CreateFile({
+            'title': 'ts-fiscal',
+            'mimeType': 'application/vnd.google-apps.folder'
+        })
+        pasta.Upload()
+        return pasta['id']
 
 # 📥 Carregar arquivo
 def carregar_arquivo(nome_arquivo):
@@ -153,9 +144,8 @@ def carregar_arquivo(nome_arquivo):
 def salvar_arquivo(df_novo, nome_arquivo):
     try:
         df_existente = carregar_arquivo(nome_arquivo)
-    except Exception as e:
-        st.error(f"❌ Erro crítico ao carregar a base '{nome_arquivo}': {e}")
-        st.stop()
+    except:
+        df_existente = pd.DataFrame(columns=df_novo.columns)
 
     # Concatenar mantendo todas as colunas
     df_total = pd.concat([df_existente, df_novo], ignore_index=True)
