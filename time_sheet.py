@@ -142,37 +142,12 @@ def carregar_arquivo(nome_arquivo):
 
 # 💾 Salvar arquivo
 def salvar_arquivo(df, nome_arquivo):
-    # 🔍 Validação antes de salvar
-    
-    if df.empty:
-        st.error("❌ Tentando salvar uma base vazia. Operação cancelada para evitar perda de dados.")
-        st.stop()
-
-    colunas_esperadas = [
-        'Usuário', 'Nome', 'Data', 'Empresa', 'Projeto', 
-        'Time', 'Atividade', 'Quantidade', 'Horas Gastas', 'Observações'
-    ]
-
-    if set(df.columns) != set(colunas_esperadas):
-        st.error(
-            f"❌ As colunas da base estão incorretas.\n"
-            f"Esperado: {colunas_esperadas}\n"
-            f"Encontrado: {df.columns.tolist()}\n"
-            f"Salvamento abortado para proteger os dados."
-        )
-        st.stop()
-
-    # 🔒 Normalizar a coluna Data para garantir padrão
+    # 🚩 Força para que a coluna Data esteja no formato datetime SEMPRE
     if "Data" in df.columns:
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce").dt.strftime("%Y-%m-%d")
 
-    # 🔐 Gerar backup antes de sobrescrever
-    salvar_backup_redundante(df, nome_base=nome_arquivo)
-
-    # 💾 Salvar CSV localmente
     df.to_csv(nome_arquivo, sep=";", index=False, encoding="utf-8-sig")
 
-    # 🔗 Upload para o Google Drive
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
@@ -191,7 +166,7 @@ def salvar_arquivo(df, nome_arquivo):
     arquivo.SetContentFile(nome_arquivo)
     arquivo.Upload()
 
-    st.success(f"✅ Arquivo '{nome_arquivo}' salvo e backup criado com sucesso!")
+    salvar_backup_redundante(df, nome_base=nome_arquivo)
 
 # 🏢 Carregar e salvar empresas
 def carregar_empresas():
