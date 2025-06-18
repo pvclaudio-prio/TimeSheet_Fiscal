@@ -152,31 +152,33 @@ def salvar_arquivo(df_novo, nome_arquivo):
         st.warning(f"⚠️ Arquivo '{nome_arquivo}' não encontrado. Criando nova base. {e}")
         df_existente = pd.DataFrame(columns=df_novo.columns)
 
-    # 🔗 Garante ID único para novos registros, se não existir
+    # 🔗 Garante ID único para novos registros
     if "ID" not in df_novo.columns:
         df_novo["ID"] = [gerar_id_unico() for _ in range(len(df_novo))]
 
-    # 🔗 Garante DataHoraLancamento
     if "DataHoraLancamento" not in df_novo.columns:
         df_novo["DataHoraLancamento"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # 🔍 Alinhar colunas para garantir consistência
+    # 🔍 Alinha colunas
     all_columns = sorted(set(df_existente.columns).union(set(df_novo.columns)))
     df_existente = df_existente.reindex(columns=all_columns)
     df_novo = df_novo.reindex(columns=all_columns)
 
-    # 🔗 Merge dos dados SEM REMOÇÃO de duplicadas
+    # 🔗 Merge
     df_total = pd.concat([df_existente, df_novo], ignore_index=True)
 
-    # 🗓️ Força a coluna Data no formato YYYY-MM-DD
-    if "Data" in df_total.columns:
-        df_total["Data"] = pd.to_datetime(df_total["Data"], errors="coerce").dt.strftime('%Y-%m-%d')
+    # ✅ Deduplicação apenas por ID, se desejar
+    df_total = df_total.drop_duplicates(subset=["ID"], keep="last")
 
-    # 💾 Salvar arquivo temporário
+    # 🗓️ Formatar data
+    if "Data" in df_total.columns:
+        df_total["Data"] = pd.to_datetime(df_total["Data"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+    # 🔽 Salvar temporário
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
     df_total.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
 
-    # 🚀 Upload para o Drive
+    # 🚀 Upload para Drive
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
@@ -195,7 +197,6 @@ def salvar_arquivo(df_novo, nome_arquivo):
     arquivo.SetContentFile(caminho_temp)
     arquivo.Upload()
 
-    # 🗂️ Backup
     salvar_backup_redundante(df_total, nome_base=nome_arquivo)
     
 # 🏢 Carregar e salvar empresas
