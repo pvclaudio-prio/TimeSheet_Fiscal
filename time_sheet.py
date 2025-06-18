@@ -935,26 +935,50 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     # 🔸 Exclusão de Registro
     st.markdown("---")
     st.subheader("🗑️ Excluir um Registro")
+    
+    if not df_filtrado.empty:
+        indice_excluir = st.selectbox("Índice para excluir:", df_filtrado.index.tolist(), key="excluir")
+    
+        linha = df_filtrado.loc[indice_excluir]
+        st.markdown("**Registro selecionado:**")
+        st.json(linha.to_dict())
+    
+        confirmar = st.radio("⚠️ Confirmar Exclusão?", ["Não", "Sim"], horizontal=True, key="confirmar_excluir")
+    
+        if confirmar == "Sim":
+            if st.button("🗑️ Confirmar Exclusão"):
+                # 🚩 Carregar a base completa novamente, SEM FILTROS
+                df_timesheet_completo = carregar_arquivo("timesheet.csv")
+    
+                # 🔍 Verificar se a coluna ID existe no registro
+                id_excluir = linha.get("ID", None)
+    
+                if id_excluir and id_excluir in df_timesheet_completo["ID"].values:
+                    # ✅ Excluir com base no ID (mais seguro)
+                    df_timesheet_completo = df_timesheet_completo[df_timesheet_completo["ID"] != id_excluir]
+                    salvar_arquivo(df_timesheet_completo, "timesheet.csv")
+                    st.success("✅ Registro excluído com sucesso!")
+                    st.rerun()
+                else:
+                    # ⚠️ Fallback se não tiver ID
+                    filtro = (
+                        (df_timesheet_completo["Usuário"] == linha["Usuário"]) &
+                        (df_timesheet_completo["Data"] == linha["Data"]) &
+                        (df_timesheet_completo["Projeto"] == linha["Projeto"]) &
+                        (df_timesheet_completo["Atividade"] == linha["Atividade"]) &
+                        (df_timesheet_completo["Horas Gastas"] == linha["Horas Gastas"]) &
+                        (df_timesheet_completo["Observações"] == linha["Observações"])
+                    )
+                    registros_para_excluir = df_timesheet_completo[filtro]
+    
+                    if not registros_para_excluir.empty:
+                        df_timesheet_completo = df_timesheet_completo.drop(registros_para_excluir.index)
+                        salvar_arquivo(df_timesheet_completo, "timesheet.csv")
+                        st.success("✅ Registro excluído com sucesso (modo sem ID)!")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ Registro não encontrado na base completa para exclusão.")
 
-    indice_excluir = st.selectbox("Índice para excluir:", df_filtrado.index.tolist(), key="excluir")
-
-    linha = df_filtrado.loc[indice_excluir]
-    st.markdown("**Registro selecionado:**")
-    st.json(linha.to_dict())
-
-    confirmar = st.radio("⚠️ Confirmar Exclusão?", ["Não", "Sim"], horizontal=True, key="confirmar_excluir")
-
-    if confirmar == "Sim":
-        if st.button("🗑️ Confirmar Exclusão"):
-            id_excluir = linha["ID"]
-
-            if pd.isna(id_excluir) or id_excluir == "":
-                st.error("❌ Este registro não possui ID. Não é possível excluir com segurança.")
-            else:
-                df_timesheet = df_timesheet[df_timesheet["ID"] != id_excluir]
-                salvar_arquivo(df_timesheet, "timesheet.csv", sobrescrever=True)
-                st.success("✅ Registro excluído com sucesso!")
-                st.experimental_rerun()
 
     # 🔸 Exportação dos Dados
     st.markdown("---")
