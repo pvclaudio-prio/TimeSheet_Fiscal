@@ -866,6 +866,11 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     df_visual = df_filtrado.copy()
     df_visual["Data"] = df_visual["Data"].dt.strftime("%d/%m/%Y")
 
+    df_visual = df_visual.rename(columns={"DataHoraLancamento": "Data de Registro"})
+    colunas = [col for col in df_visual.columns if col not in ["ID", "Data de Registro"]]
+    colunas_final = colunas + ["Data de Registro", "ID"]
+    df_visual = df_visual[colunas_final]
+
     st.markdown(f"### 🔍 {len(df_visual)} registros encontrados")
 
     if df_visual.empty:
