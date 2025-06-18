@@ -143,35 +143,39 @@ def carregar_arquivo(nome_arquivo):
 # 💾 Salvar arquivo
 def salvar_arquivo(df_novo, nome_arquivo):
     try:
+        # 🚩 Sempre carrega a versão atual do arquivo diretamente do Drive
         df_existente = carregar_arquivo(nome_arquivo)
     except Exception as e:
-        st.warning(f"⚠️ Arquivo não encontrado ou erro na leitura. Será criada uma nova base. {e}")
+        st.warning(f"⚠️ Arquivo '{nome_arquivo}' não encontrado ou erro na leitura. Será criada uma nova base. {e}")
         df_existente = pd.DataFrame(columns=df_novo.columns)
 
-    # 🔥 Alinhar colunas
+    # 🔍 Garantir que as colunas estejam alinhadas entre os dois DataFrames
     all_columns = sorted(set(df_existente.columns).union(set(df_novo.columns)))
     df_existente = df_existente.reindex(columns=all_columns)
     df_novo = df_novo.reindex(columns=all_columns)
 
-    # 🔥 Concatenar dados
+    # 🔗 Concatenar dados existentes com os novos
     df_total = pd.concat([df_existente, df_novo], ignore_index=True)
 
-    # 🔥 Remover duplicatas
+    # 🚫 Remover duplicatas baseando-se nas principais chaves
     df_total = df_total.drop_duplicates(
         subset=["Usuário", "Data", "Projeto", "Atividade", "Observações"],
         keep="last"
     )
 
-    # 🔥 Padronizar Data
+    # 🗓️ Garantir que a coluna Data esteja no formato correto
     if "Data" in df_total.columns:
         df_total["Data"] = pd.to_datetime(df_total["Data"], errors="coerce").dt.strftime("%Y-%m-%d")
 
-    # 🔥 Salvar no Drive
-    df_total.to_csv(nome_arquivo, sep=";", index=False, encoding="utf-8-sig")
+    # 💾 Salvar temporariamente para upload
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
+    df_total.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
 
+    # 🚀 Conectar ao Google Drive
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
+    # 🔍 Verificar se o arquivo já existe no Drive
     arquivos = drive.ListFile({
         'q': f"'{pasta_id}' in parents and title = '{nome_arquivo}' and trashed=false"
     }).GetList()
@@ -184,10 +188,15 @@ def salvar_arquivo(df_novo, nome_arquivo):
             'parents': [{'id': pasta_id}]
         })
 
-    arquivo.SetContentFile(nome_arquivo)
+    # 🔼 Enviar o arquivo atualizado para o Drive
+    arquivo.SetContentFile(caminho_temp)
     arquivo.Upload()
 
+    # 🗂️ Criar backup redundante automaticamente
     salvar_backup_redundante(df_total, nome_base=nome_arquivo)
+
+    # ✅ Mensagem de sucesso opcional
+    st.success(f"✅ Arquivo '{nome_arquivo}' salvo com sucesso no Drive e o backup foi gerado.")
 
 # 🏢 Carregar e salvar empresas
 def carregar_empresas():
