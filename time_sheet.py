@@ -164,37 +164,38 @@ def carregar_arquivo(nome_arquivo):
 def gerar_id_unico():
     return str(uuid.uuid4())
 
-def salvar_arquivo(df, nome_arquivo):
-    try:
-        # Carrega a base existente
-        df_existente = carregar_arquivo(nome_arquivo)
-    except Exception:
-        # Se não existir, cria vazio alinhado às colunas atuais
-        df_existente = pd.DataFrame(columns=df.columns)
-
-    # 🔍 Alinha colunas entre novo e existente
-    todas_colunas = sorted(set(df.columns).union(set(df_existente.columns)))
-    df = df.reindex(columns=todas_colunas)
-    df_existente = df_existente.reindex(columns=todas_colunas)
-
-    # 🔗 Junta mantendo dados atualizados pelo ID
-    df_total = pd.concat([df_existente, df], ignore_index=True)
-
-    # 🚩 Remove duplicados pelo ID — chave absoluta
-    df_total = df_total.drop_duplicates(subset=["ID"], keep="last")
-
-    # 🗓️ Formata a coluna de Data
-    if "Data" in df_total.columns:
-        df_total["Data"] = pd.to_datetime(df_total["Data"], errors="coerce").dt.strftime('%Y-%m-%d')
-
-    # 🔽 Salva em arquivo temporário
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
-    df_total.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
-
-    # 🚀 Upload para o Google Drive
+def salvar_arquivo(df, nome_arquivo, sobrescrever=False):
+    """
+    ⚙️ Salva o arquivo no Google Drive.
+    - sobrescrever=True → substitui o arquivo inteiro pela base atual (exclusões e edições).
+    - sobrescrever=False → adiciona novos registros à base existente (lançamento de timesheet).
+    """
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
+    if not sobrescrever:
+        try:
+            df_existente = carregar_arquivo(nome_arquivo)
+        except Exception:
+            df_existente = pd.DataFrame(columns=df.columns)
+
+        # 🔗 Alinhar colunas
+        all_columns = sorted(set(df_existente.columns).union(set(df.columns)))
+        df_existente = df_existente.reindex(columns=all_columns)
+        df = df.reindex(columns=all_columns)
+
+        # 🔗 Concatenar
+        df = pd.concat([df_existente, df], ignore_index=True)
+
+    # ✅ Forçar formatação da Data
+    if "Data" in df.columns:
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce").dt.strftime('%Y-%m-%d')
+
+    # 🔥 Salvar no temporário
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
+    df.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
+
+    # 🚀 Upload
     arquivos = drive.ListFile({
         'q': f"'{pasta_id}' in parents and title = '{nome_arquivo}' and trashed=false"
     }).GetList()
@@ -210,8 +211,7 @@ def salvar_arquivo(df, nome_arquivo):
     arquivo.SetContentFile(caminho_temp)
     arquivo.Upload()
 
-    # 🗂️ Faz backup da versão
-    salvar_backup_redundante(df_total, nome_base=nome_arquivo)
+    salvar_backup_redundante(df, nome_base=nome_arquivo)
     
 # 🏢 Carregar e salvar empresas
 def carregar_empresas():
@@ -784,7 +784,7 @@ elif menu == "📝 Lançamento de Timesheet":
                 })
     
                 # 🔥 Salvar apenas o novo
-                salvar_arquivo(novo, "timesheet.csv")
+                salvar_arquivo(novo, "timesheet.csv", sobrescrever=False)
     
                 st.success("✅ Registro salvo no Timesheet com sucesso!")
 
@@ -952,7 +952,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
                 st.error("❌ Este registro não possui ID. Não é possível excluir com segurança.")
             else:
                 df_timesheet = df_timesheet[df_timesheet["ID"] != id_excluir]
-                salvar_arquivo(df_timesheet, "timesheet.csv")
+                salvar_arquivo(df_timesheet, "timesheet.csv", sobrescrever=True)
                 st.success("✅ Registro excluído com sucesso!")
                 st.experimental_rerun()
 
