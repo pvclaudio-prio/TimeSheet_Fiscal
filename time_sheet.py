@@ -195,9 +195,6 @@ def salvar_arquivo(df_novo, nome_arquivo):
     # 🗂️ Criar backup redundante automaticamente
     salvar_backup_redundante(df_total, nome_base=nome_arquivo)
 
-    # ✅ Mensagem de sucesso opcional
-    st.success(f"✅ Arquivo '{nome_arquivo}' salvo com sucesso no Drive e o backup foi gerado.")
-
 # 🏢 Carregar e salvar empresas
 def carregar_empresas():
     df = carregar_arquivo("empresas.csv")
