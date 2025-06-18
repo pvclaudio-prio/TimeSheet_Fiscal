@@ -437,7 +437,7 @@ if menu == "🏠 Dashboard":
     st.subheader("🗒️ Horas por Atividade")
     grafico_atividade = df_filtrado.groupby("Atividade")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
     fig = px.bar(
-        grafico_atividade,
+        grafico_atividade.head(),
         x="Atividade",
         y="Horas",
         title=None,
