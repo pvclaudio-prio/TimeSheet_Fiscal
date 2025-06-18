@@ -796,7 +796,6 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     st.title("📄 Visualizar, Editar ou Excluir Timesheet")
 
     usuario_logado = st.session_state.username
-    nome_usuario = users[usuario_logado]["name"]
 
     # 🔸 Carregar Dados
     df_timesheet = carregar_arquivo("timesheet.csv")
@@ -870,15 +869,14 @@ elif menu == "📄 Visualizar / Editar Timesheet":
 
     # 🔍 Filtro de período
     df_filtrado = df_filtrado[
-        (df_filtrado["Data"].dt.date >= data_inicial) &
-        (df_filtrado["Data"].dt.date <= data_final)
+        (df_filtrado["Data"].dt.date >= data_inicial) & (df_filtrado["Data"].dt.date <= data_final)
     ].sort_values(by="Data")
 
     # 🔸 Visualização
     df_visual = df_filtrado.copy()
     df_visual["Data"] = df_visual["Data"].dt.strftime("%d/%m/%Y")
-
     df_visual = df_visual.rename(columns={"DataHoraLancamento": "Data de Registro"})
+
     colunas = [col for col in df_visual.columns if col not in ["ID", "Data de Registro"]]
     colunas_final = colunas + ["Data de Registro", "ID"]
     df_visual = df_visual[colunas_final]
@@ -887,6 +885,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
 
     if df_visual.empty:
         st.info("🚩 Nenhum registro encontrado com os filtros aplicados.")
+        st.stop()
     else:
         st.dataframe(df_visual, use_container_width=True)
 
@@ -894,39 +893,41 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     st.markdown("---")
     st.subheader("✏️ Editar um Registro")
 
-    if not df_filtrado.empty:
-        indice = st.selectbox("Selecione o índice para editar:", df_filtrado.index.tolist())
+    indice = st.selectbox("Selecione o índice para editar:", df_filtrado.index.tolist())
 
-        linha = df_filtrado.loc[indice]
+    linha = df_filtrado.loc[indice]
 
-        col_editar = st.selectbox("Coluna:", [
-            "Data", "Nome", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"
-        ])
+    col_editar = st.selectbox("Coluna:", [
+        "Data", "Nome", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"
+    ])
 
-        valor_atual = linha[col_editar]
+    valor_atual = linha[col_editar]
 
-        if col_editar == "Data":
-            novo_valor = st.date_input(
-                "Nova Data",
-                value=valor_atual.date() if pd.notnull(valor_atual) else date.today()
-            )
-            st.markdown(f"📅 Data selecionada: **{novo_valor.strftime('%d/%m/%Y')}**")
-            novo_valor = pd.to_datetime(novo_valor)
+    if col_editar == "Data":
+        novo_valor = st.date_input(
+            "Nova Data",
+            value=valor_atual.date() if pd.notnull(valor_atual) else date.today()
+        )
+        novo_valor = pd.to_datetime(novo_valor)
 
-        elif col_editar == "Quantidade":
-            novo_valor = st.number_input(
-                "Nova Quantidade",
-                value=int(valor_atual) if pd.notnull(valor_atual) else 0
-            )
+    elif col_editar == "Quantidade":
+        novo_valor = st.number_input(
+            "Nova Quantidade",
+            value=int(valor_atual) if pd.notnull(valor_atual) else 0
+        )
 
+    else:
+        novo_valor = st.text_input(
+            "Novo Valor",
+            value=str(valor_atual) if pd.notnull(valor_atual) else ""
+        )
+
+    if st.button("💾 Atualizar Registro"):
+        id_editar = linha["ID"]
+        if pd.isna(id_editar) or id_editar == "":
+            st.error("❌ Este registro não possui ID. Não é possível editar com segurança.")
         else:
-            novo_valor = st.text_input(
-                "Novo Valor",
-                value=str(valor_atual) if pd.notnull(valor_atual) else ""
-            )
-
-        if st.button("💾 Atualizar Registro"):
-            df_timesheet.at[indice, col_editar] = novo_valor
+            df_timesheet.loc[df_timesheet["ID"] == id_editar, col_editar] = novo_valor
             salvar_arquivo(df_timesheet, "timesheet.csv")
             st.success(f"✅ Registro atualizado com sucesso!")
             st.experimental_rerun()
@@ -935,33 +936,31 @@ elif menu == "📄 Visualizar / Editar Timesheet":
     st.markdown("---")
     st.subheader("🗑️ Excluir um Registro")
 
-    if not df_filtrado.empty:
-        indice_excluir = st.selectbox("Índice para excluir:", df_filtrado.index.tolist(), key="excluir")
+    indice_excluir = st.selectbox("Índice para excluir:", df_filtrado.index.tolist(), key="excluir")
 
-        linha = df_filtrado.loc[indice_excluir]
-        st.markdown("**Registro selecionado:**")
-        st.json(linha.to_dict())
+    linha = df_filtrado.loc[indice_excluir]
+    st.markdown("**Registro selecionado:**")
+    st.json(linha.to_dict())
 
-        confirmar = st.radio("⚠️ Confirmar Exclusão?", ["Não", "Sim"], horizontal=True, key="confirmar_excluir")
+    confirmar = st.radio("⚠️ Confirmar Exclusão?", ["Não", "Sim"], horizontal=True, key="confirmar_excluir")
 
-        if confirmar == "Sim":
-            if st.button("🗑️ Confirmar Exclusão"):
-                id_excluir = linha["ID"]
-            
-                if pd.isna(id_excluir) or id_excluir == '':
-                    st.error("❌ Este registro não possui ID. Não é possível excluir com segurança.")
-                else:
-                    df_timesheet = df_timesheet[df_timesheet["ID"] != id_excluir]
-                    salvar_arquivo(df_timesheet, "timesheet.csv")
-                    st.success("✅ Registro excluído com sucesso!")
-                    st.experimental_rerun()
+    if confirmar == "Sim":
+        if st.button("🗑️ Confirmar Exclusão"):
+            id_excluir = linha["ID"]
+
+            if pd.isna(id_excluir) or id_excluir == "":
+                st.error("❌ Este registro não possui ID. Não é possível excluir com segurança.")
+            else:
+                df_timesheet = df_timesheet[df_timesheet["ID"] != id_excluir]
+                salvar_arquivo(df_timesheet, "timesheet.csv")
+                st.success("✅ Registro excluído com sucesso!")
+                st.experimental_rerun()
 
     # 🔸 Exportação dos Dados
     st.markdown("---")
     st.subheader("📥 Exportar Dados")
 
-    df_export = df_filtrado.copy()
-    df_export["Data"] = df_export["Data"].dt.strftime("%d/%m/%Y")
+    df_export = df_visual.copy()
 
     buffer = df_export.to_csv(index=False, sep=";", encoding="utf-8-sig").encode()
 
