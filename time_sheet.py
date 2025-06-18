@@ -147,43 +147,40 @@ def gerar_id_unico():
 
 def salvar_arquivo(df_novo, nome_arquivo):
     try:
+        # 🚩 Carrega o arquivo existente ANTES de salvar
         df_existente = carregar_arquivo(nome_arquivo)
-    except Exception as e:
-        st.warning(f"⚠️ Arquivo '{nome_arquivo}' não encontrado. Criando nova base. {e}")
+    except Exception:
+        st.warning(f"⚠️ Arquivo '{nome_arquivo}' não encontrado. Criando nova base.")
         df_existente = pd.DataFrame(columns=df_novo.columns)
 
-    # 🔗 Garante ID único para registros que não possuem
+    # 🔗 Garante ID único para novos registros
     if "ID" not in df_novo.columns or df_novo["ID"].isnull().all():
         df_novo["ID"] = [gerar_id_unico() for _ in range(len(df_novo))]
     else:
-        # Preenche apenas onde está vazio
         df_novo["ID"] = df_novo["ID"].apply(lambda x: gerar_id_unico() if pd.isna(x) or x == '' else x)
 
-    # 🔗 Garante DataHoraLancamento
+    # 🔗 DataHoraLancamento
     if "DataHoraLancamento" not in df_novo.columns or df_novo["DataHoraLancamento"].isnull().all():
         df_novo["DataHoraLancamento"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     else:
         df_novo["DataHoraLancamento"] = df_novo["DataHoraLancamento"].fillna(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
-    # 🔍 Alinhar colunas
+    # 🔍 Alinha colunas para garantir integridade
     all_columns = sorted(set(df_existente.columns).union(set(df_novo.columns)))
     df_existente = df_existente.reindex(columns=all_columns)
     df_novo = df_novo.reindex(columns=all_columns)
 
-    # 🔗 Merge SEM remover duplicadas humanas, apenas evita ID duplicado (erro técnico)
+    # 🔗 Merge dos dados
     df_total = pd.concat([df_existente, df_novo], ignore_index=True)
 
-    df_total = df_total.drop_duplicates(subset=["ID"], keep="last")
-
-    # 🗓️ Formatar coluna Data
+    # 🗓️ Força formatação da Data
     if "Data" in df_total.columns:
         df_total["Data"] = pd.to_datetime(df_total["Data"], errors="coerce").dt.strftime('%Y-%m-%d')
 
-    # 💾 Salvar arquivo temporário
+    # 💾 Salvar no Drive
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
     df_total.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
 
-    # 🚀 Upload para Drive
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
