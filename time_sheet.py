@@ -95,6 +95,21 @@ def conectar_drive():
     drive = GoogleDrive(gauth)
     return drive
 
+def garantir_ids_legado(df):
+    # 🆔 Garante que todos os registros tenham um ID único
+    if "ID" not in df.columns:
+        df["ID"] = [str(uuid.uuid4()) for _ in range(len(df))]
+    else:
+        df["ID"] = df["ID"].apply(lambda x: str(uuid.uuid4()) if pd.isna(x) or str(x).strip() == '' else str(x))
+
+    # 🕒 Garante que todos tenham DataHora de Lançamento
+    if "DataHoraLancamento" not in df.columns:
+        df["DataHoraLancamento"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        df["DataHoraLancamento"] = df["DataHoraLancamento"].fillna(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+    return df
+    
 # 🚩 Obter pasta ts-fiscal
 def obter_pasta_ts_fiscal(drive):
     lista = drive.ListFile({
@@ -130,14 +145,18 @@ def carregar_arquivo(nome_arquivo):
 
     caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
     arquivos[0].GetContentFile(caminho_temp)
+
     df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
 
     if df.empty:
-        st.warning("⚠️ A base foi carregada mas está vazia.")
+        st.warning("⚠️ A base foi carregada, mas está vazia.")
 
-    # Tratamento padrão de data e horas
+    # 🧹 Tratamento padrão
     df = tratar_coluna_data(df)
     df = normalizar_coluna_horas(df)
+
+    # 🔐 Garante consistência de IDs e DataHora para legado
+    df = garantir_ids_legado(df)
 
     return df
 
@@ -145,42 +164,34 @@ def carregar_arquivo(nome_arquivo):
 def gerar_id_unico():
     return str(uuid.uuid4())
 
-def salvar_arquivo(df_novo, nome_arquivo):
+def salvar_arquivo(df, nome_arquivo):
     try:
-        # 🚩 Carrega o arquivo existente ANTES de salvar
+        # Carrega a base existente
         df_existente = carregar_arquivo(nome_arquivo)
     except Exception:
-        st.warning(f"⚠️ Arquivo '{nome_arquivo}' não encontrado. Criando nova base.")
-        df_existente = pd.DataFrame(columns=df_novo.columns)
+        # Se não existir, cria vazio alinhado às colunas atuais
+        df_existente = pd.DataFrame(columns=df.columns)
 
-    # 🔗 Garante ID único para novos registros
-    if "ID" not in df_novo.columns or df_novo["ID"].isnull().all():
-        df_novo["ID"] = [gerar_id_unico() for _ in range(len(df_novo))]
-    else:
-        df_novo["ID"] = df_novo["ID"].apply(lambda x: gerar_id_unico() if pd.isna(x) or x == '' else x)
+    # 🔍 Alinha colunas entre novo e existente
+    todas_colunas = sorted(set(df.columns).union(set(df_existente.columns)))
+    df = df.reindex(columns=todas_colunas)
+    df_existente = df_existente.reindex(columns=todas_colunas)
 
-    # 🔗 DataHoraLancamento
-    if "DataHoraLancamento" not in df_novo.columns or df_novo["DataHoraLancamento"].isnull().all():
-        df_novo["DataHoraLancamento"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    else:
-        df_novo["DataHoraLancamento"] = df_novo["DataHoraLancamento"].fillna(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    # 🔗 Junta mantendo dados atualizados pelo ID
+    df_total = pd.concat([df_existente, df], ignore_index=True)
 
-    # 🔍 Alinha colunas para garantir integridade
-    all_columns = sorted(set(df_existente.columns).union(set(df_novo.columns)))
-    df_existente = df_existente.reindex(columns=all_columns)
-    df_novo = df_novo.reindex(columns=all_columns)
+    # 🚩 Remove duplicados pelo ID — chave absoluta
+    df_total = df_total.drop_duplicates(subset=["ID"], keep="last")
 
-    # 🔗 Merge dos dados
-    df_total = pd.concat([df_existente, df_novo], ignore_index=True)
-
-    # 🗓️ Força formatação da Data
+    # 🗓️ Formata a coluna de Data
     if "Data" in df_total.columns:
         df_total["Data"] = pd.to_datetime(df_total["Data"], errors="coerce").dt.strftime('%Y-%m-%d')
 
-    # 💾 Salvar no Drive
+    # 🔽 Salva em arquivo temporário
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
     df_total.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
 
+    # 🚀 Upload para o Google Drive
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
@@ -199,6 +210,7 @@ def salvar_arquivo(df_novo, nome_arquivo):
     arquivo.SetContentFile(caminho_temp)
     arquivo.Upload()
 
+    # 🗂️ Faz backup da versão
     salvar_backup_redundante(df_total, nome_base=nome_arquivo)
     
 # 🏢 Carregar e salvar empresas
@@ -934,10 +946,15 @@ elif menu == "📄 Visualizar / Editar Timesheet":
 
         if confirmar == "Sim":
             if st.button("🗑️ Confirmar Exclusão"):
-                df_timesheet = df_timesheet.drop(index=indice_excluir)
-                salvar_arquivo(df_timesheet, "timesheet.csv")
-                st.success("✅ Registro excluído com sucesso!")
-                st.experimental_rerun()
+                id_excluir = linha["ID"]
+            
+                if pd.isna(id_excluir) or id_excluir == '':
+                    st.error("❌ Este registro não possui ID. Não é possível excluir com segurança.")
+                else:
+                    df_timesheet = df_timesheet[df_timesheet["ID"] != id_excluir]
+                    salvar_arquivo(df_timesheet, "timesheet.csv")
+                    st.success("✅ Registro excluído com sucesso!")
+                    st.experimental_rerun()
 
     # 🔸 Exportação dos Dados
     st.markdown("---")
