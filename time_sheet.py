@@ -12,6 +12,7 @@ from docx import Document
 from docx.shared import Pt
 import plotly.express as px
 import re
+import uuid
 
 st.set_page_config(page_title="Timesheet Fiscal", layout="wide")
 st.sidebar.markdown(f"📅 Hoje é: **{date.today().strftime('%d/%m/%Y')}**")
@@ -141,41 +142,46 @@ def carregar_arquivo(nome_arquivo):
     return df
 
 # 💾 Salvar arquivo
+def gerar_id_unico():
+    return str(uuid.uuid4())
+
 def salvar_arquivo(df_novo, nome_arquivo):
     try:
-        # 🚩 Sempre carrega a versão atual do arquivo diretamente do Drive
         df_existente = carregar_arquivo(nome_arquivo)
     except Exception as e:
-        st.warning(f"⚠️ Arquivo '{nome_arquivo}' não encontrado ou erro na leitura. Será criada uma nova base. {e}")
+        st.warning(f"⚠️ Arquivo '{nome_arquivo}' não encontrado. Criando nova base. {e}")
         df_existente = pd.DataFrame(columns=df_novo.columns)
 
-    # 🔍 Garantir que as colunas estejam alinhadas entre os dois DataFrames
+    # 🔗 Garante ID único para novos registros
+    if "ID" not in df_novo.columns:
+        df_novo["ID"] = [gerar_id_unico() for _ in range(len(df_novo))]
+
+    if "DataHoraLancamento" not in df_novo.columns:
+        df_novo["DataHoraLancamento"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # 🔍 Alinha colunas
     all_columns = sorted(set(df_existente.columns).union(set(df_novo.columns)))
     df_existente = df_existente.reindex(columns=all_columns)
     df_novo = df_novo.reindex(columns=all_columns)
 
-    # 🔗 Concatenar dados existentes com os novos
+    # 🔗 Merge
     df_total = pd.concat([df_existente, df_novo], ignore_index=True)
 
-    # 🚫 Remover duplicatas baseando-se nas principais chaves
-    df_total = df_total.drop_duplicates(
-        subset=["Usuário", "Data", "Projeto", "Atividade", "Observações"],
-        keep="last"
-    )
+    # ✅ Deduplicação apenas por ID, se desejar
+    df_total = df_total.drop_duplicates(subset=["ID"], keep="last")
 
-    # 🗓️ Garantir que a coluna Data esteja no formato correto
+    # 🗓️ Formatar data
     if "Data" in df_total.columns:
         df_total["Data"] = pd.to_datetime(df_total["Data"], errors="coerce").dt.strftime("%Y-%m-%d")
 
-    # 💾 Salvar temporariamente para upload
+    # 🔽 Salvar temporário
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
     df_total.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
 
-    # 🚀 Conectar ao Google Drive
+    # 🚀 Upload para Drive
     drive = conectar_drive()
     pasta_id = obter_pasta_ts_fiscal(drive)
 
-    # 🔍 Verificar se o arquivo já existe no Drive
     arquivos = drive.ListFile({
         'q': f"'{pasta_id}' in parents and title = '{nome_arquivo}' and trashed=false"
     }).GetList()
@@ -188,11 +194,9 @@ def salvar_arquivo(df_novo, nome_arquivo):
             'parents': [{'id': pasta_id}]
         })
 
-    # 🔼 Enviar o arquivo atualizado para o Drive
     arquivo.SetContentFile(caminho_temp)
     arquivo.Upload()
 
-    # 🗂️ Criar backup redundante automaticamente
     salvar_backup_redundante(df_total, nome_base=nome_arquivo)
 
 # 🏢 Carregar e salvar empresas
