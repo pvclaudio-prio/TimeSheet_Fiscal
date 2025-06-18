@@ -152,29 +152,34 @@ def salvar_arquivo(df_novo, nome_arquivo):
         st.warning(f"⚠️ Arquivo '{nome_arquivo}' não encontrado. Criando nova base. {e}")
         df_existente = pd.DataFrame(columns=df_novo.columns)
 
-    # 🔗 Garante ID único para novos registros
-    if "ID" not in df_novo.columns:
+    # 🔗 Garante ID único para registros que não possuem
+    if "ID" not in df_novo.columns or df_novo["ID"].isnull().all():
         df_novo["ID"] = [gerar_id_unico() for _ in range(len(df_novo))]
+    else:
+        # Preenche apenas onde está vazio
+        df_novo["ID"] = df_novo["ID"].apply(lambda x: gerar_id_unico() if pd.isna(x) or x == '' else x)
 
-    if "DataHoraLancamento" not in df_novo.columns:
+    # 🔗 Garante DataHoraLancamento
+    if "DataHoraLancamento" not in df_novo.columns or df_novo["DataHoraLancamento"].isnull().all():
         df_novo["DataHoraLancamento"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        df_novo["DataHoraLancamento"] = df_novo["DataHoraLancamento"].fillna(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
-    # 🔍 Alinha colunas
+    # 🔍 Alinhar colunas
     all_columns = sorted(set(df_existente.columns).union(set(df_novo.columns)))
     df_existente = df_existente.reindex(columns=all_columns)
     df_novo = df_novo.reindex(columns=all_columns)
 
-    # 🔗 Merge
+    # 🔗 Merge SEM remover duplicadas humanas, apenas evita ID duplicado (erro técnico)
     df_total = pd.concat([df_existente, df_novo], ignore_index=True)
 
-    # ✅ Deduplicação apenas por ID, se desejar
     df_total = df_total.drop_duplicates(subset=["ID"], keep="last")
 
-    # 🗓️ Formatar data
+    # 🗓️ Formatar coluna Data
     if "Data" in df_total.columns:
-        df_total["Data"] = pd.to_datetime(df_total["Data"], errors="coerce").dt.strftime("%Y-%m-%d")
+        df_total["Data"] = pd.to_datetime(df_total["Data"], errors="coerce").dt.strftime('%Y-%m-%d')
 
-    # 🔽 Salvar temporário
+    # 💾 Salvar arquivo temporário
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
     df_total.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
 
