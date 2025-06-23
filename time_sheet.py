@@ -176,8 +176,12 @@ def salvar_arquivo(df, nome_arquivo, sobrescrever=False):
     if not sobrescrever:
         try:
             df_existente = carregar_arquivo(nome_arquivo)
-        except Exception:
-            df_existente = pd.DataFrame(columns=df.columns)
+            if df_existente.empty:
+                st.error(f"❌ A base '{nome_arquivo}' não foi carregada corretamente. Cancelando operação para evitar perda de dados.")
+                st.stop()
+        except Exception as e:
+            st.error(f"❌ Erro crítico ao carregar a base '{nome_arquivo}': {e}")
+            st.stop()
 
         # 🔗 Alinhar colunas
         all_columns = sorted(set(df_existente.columns).union(set(df.columns)))
