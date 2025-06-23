@@ -920,8 +920,8 @@ elif menu == "📄 Visualizar / Editar Timesheet":
         novo_valor = st.text_input(
             "Novo Valor",
             value=str(valor_atual) if pd.notnull(valor_atual) else ""
-        )
-
+        ).replace('\n', ' ').replace(';', ',').strip()
+    
     if st.button("💾 Atualizar Registro"):
         id_editar = linha["ID"]
         if pd.isna(id_editar) or id_editar == "":
