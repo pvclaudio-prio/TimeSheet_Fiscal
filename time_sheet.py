@@ -932,7 +932,7 @@ elif menu == "📄 Visualizar / Editar Timesheet":
             st.error("❌ Este registro não possui ID. Não é possível editar com segurança.")
         else:
             df_timesheet.loc[df_timesheet["ID"] == id_editar, col_editar] = novo_valor
-            salvar_arquivo(df_timesheet, "timesheet.csv")
+            salvar_arquivo(df_timesheet, "timesheet.csv", sobrescrever=True)
             st.success(f"✅ Registro atualizado com sucesso!")
             st.experimental_rerun()
 
