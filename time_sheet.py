@@ -770,10 +770,17 @@ elif menu == "📝 Lançamento de Timesheet":
         submitted = st.form_submit_button("💾 Registrar")
     
         if submitted:
+            # 🔒 Validação obrigatória
             if horas == "00:00":
                 st.warning("⚠️ O campo Horas Gastas não pode ser 00:00.")
+            elif not projeto or not atividade or not empresa:
+                st.warning("⚠️ Preencha todos os campos obrigatórios antes de registrar.")
             else:
-                # ✔️ 🔥 Registro novo — APENAS O NOVO, NÃO A BASE INTEIRA
+                # ✅ Gerar ID e Timestamp
+                id_registro = gerar_id_unico()
+                datahora_lancamento = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                
+                # ✔️ Registro novo — APENAS O NOVO, NÃO A BASE INTEIRA
                 novo = pd.DataFrame({
                     "Usuário": [usuario_logado],
                     "Nome": [nome_usuario],
@@ -784,7 +791,9 @@ elif menu == "📝 Lançamento de Timesheet":
                     "Atividade": [atividade],
                     "Quantidade": [quantidade],
                     "Horas Gastas": [horas],
-                    "Observações": [observacoes]
+                    "Observações": [observacoes],
+                    "DataHoraLancamento": [datahora_lancamento],
+                    "ID": [id_registro]
                 })
     
                 # 🔥 Salvar apenas o novo
