@@ -1028,10 +1028,10 @@ elif menu == "📊 Avaliação de Performance — IA":
 
     df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors='coerce')
     df_timesheet["Ano"] = df_timesheet["Data"].dt.year
-    df_timesheet["Mês"] = df_timesheet["Data"].dt.strftime('%m - %B')
+    df_timesheet["Mes"] = df_timesheet["Data"].dt.strftime('%m - %B')
     anos_disponiveis = sorted(df_timesheet["Ano"].dropna().unique().tolist())
     ano_escolhido = st.selectbox("Selecione o Ano:", ["Todos os Anos"] + anos_disponiveis)
-    meses_disponiveis = df_filtrado["Mês"].dropna().unique().tolist()
+    meses_disponiveis = df_filtrado["Mes"].dropna().unique().tolist()
     meses_disponiveis_ordenados = sorted(meses_disponiveis, key=lambda x: int(x.split(" - ")[0]))
     mes_escolhido = st.selectbox("Selecione o Mês:", ["Todos os Meses"] + meses_disponiveis_ordenados)
 
@@ -1053,7 +1053,7 @@ elif menu == "📊 Avaliação de Performance — IA":
         df_filtrado = df_timesheet.copy()
 
     if "Todos os Meses" not in mes_escolhido:
-        df_filtrado = df_filtrado[df_filtrado["Mês"] == mes_escolhido]
+        df_filtrado = df_filtrado[df_filtrado["Mes"] == mes_escolhido]
     else:
         df_filtrado = df_timesheet.copy()
     
