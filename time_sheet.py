@@ -1045,7 +1045,7 @@ elif menu == "📊 Avaliação de Performance — IA":
     if "Todos os Colaboradores" not in colaborador_escolhido:
         df_filtrado = df_filtrado[df_filtrado["Nome"].isin(colaborador_escolhido)]
     
-    if "Todos os Anos" not in str(ano_escolhido):
+    if not ("Todos os Anos" in ano_escolhido or len(ano_escolhido) == 0):
         df_filtrado = df_filtrado[df_filtrado["Ano"].isin(ano_escolhido)]
     
     if "Todos os Meses" not in mes_escolhido:
