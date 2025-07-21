@@ -1039,7 +1039,7 @@ elif menu == "📊 Avaliação de Performance — IA":
     # Aplicar filtro
     df_filtrado = df_timesheet.copy()
     
-    if projeto_escolhido != "Todos os Projetos":
+    if "Todos os Projetos" not in lista_projetos:
         df_filtrado = df_filtrado[df_filtrado["Projeto"].isin(projeto_escolhido)]
     
     if "Todos os Colaboradores" not in colaborador_escolhido:
