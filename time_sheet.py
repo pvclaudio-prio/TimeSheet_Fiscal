@@ -1020,9 +1020,40 @@ elif menu == "📊 Avaliação de Performance — IA":
         ["Todos os Projetos"] + lista_projetos
     )
     
+    lista_colaboradores = sorted(df_timesheet["Nome"].dropna().unique().tolist())
+    colaborador_escolhido = st.multiselect(
+        "Selecione o Colaborador para análise:",
+        ["Todos os Colaboradores"] + lista_colaboradores
+    )
+
+    df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors='coerce')
+    df_timesheet["Ano"] = df_timesheet["Data"].dt.year
+    df_timesheet["Mês"] = df_timesheet["Data"].dt.strftime('%m - %B')
+    anos_disponiveis = sorted(df_timesheet["Ano"].dropna().unique().tolist())
+    ano_escolhido = st.selectbox("Selecione o Ano:", ["Todos os Anos"] + anos_disponiveis)
+    meses_disponiveis = df_filtrado["Mês"].dropna().unique().tolist()
+    meses_disponiveis_ordenados = sorted(meses_disponiveis, key=lambda x: int(x.split(" - ")[0]))
+    mes_escolhido = st.selectbox("Selecione o Mês:", ["Todos os Meses"] + meses_disponiveis_ordenados)
+
+    
     # Aplicar filtro
     if projeto_escolhido != "Todos os Projetos":
         df_filtrado = df_timesheet[df_timesheet["Projeto"] == projeto_escolhido]
+    else:
+        df_filtrado = df_timesheet.copy()
+        
+    if "Todos os Colaboradores" not in colaborador_escolhido:
+        df_filtrado = df_timesheet[df_timesheet["Nome"].isin(colaborador_escolhido)]
+    else:
+        df_filtrado = df_timesheet.copy()
+
+    if "Todos os Anos" not in str(ano_escolhido):
+        df_filtrado = df_timesheet[df_timesheet["Ano"] == ano_escolhido]
+    else:
+        df_filtrado = df_timesheet.copy()
+
+    if "Todos os Meses" not in mes_escolhido:
+        df_filtrado = df_filtrado[df_filtrado["Mês"] == mes_escolhido]
     else:
         df_filtrado = df_timesheet.copy()
     
