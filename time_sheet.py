@@ -1039,13 +1039,13 @@ elif menu == "📊 Avaliação de Performance — IA":
     # Aplicar filtro
     df_filtrado = df_timesheet.copy()
     
-    if "Todos os Projetos" not in lista_projetos:
+    if "Todos os Projetos" not in projeto_escolhido:
         df_filtrado = df_filtrado[df_filtrado["Projeto"].isin(projeto_escolhido)]
     
     if "Todos os Colaboradores" not in colaborador_escolhido:
         df_filtrado = df_filtrado[df_filtrado["Nome"].isin(colaborador_escolhido)]
     
-    if not ("Todos os Anos" in ano_escolhido or len(ano_escolhido) == 0):
+    if "Todos os Anos" not in ano_escolhido:
         df_filtrado = df_filtrado[df_filtrado["Ano"].isin(ano_escolhido)]
     
     if "Todos os Meses" not in mes_escolhido:
