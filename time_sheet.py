@@ -1015,7 +1015,7 @@ elif menu == "📊 Avaliação de Performance — IA":
     st.markdown("### 🤖 Gerando relatório com IA")
     
     lista_projetos = sorted(df_timesheet["Projeto"].dropna().unique().tolist())
-    projeto_escolhido = st.selectbox(
+    projeto_escolhido = st.multiselect(
         "Selecione o Projeto para análise:",
         ["Todos os Projetos"] + lista_projetos
     )
@@ -1040,16 +1040,16 @@ elif menu == "📊 Avaliação de Performance — IA":
     df_filtrado = df_timesheet.copy()
     
     if projeto_escolhido != "Todos os Projetos":
-        df_filtrado = df_filtrado[df_filtrado["Projeto"] == projeto_escolhido]
+        df_filtrado = df_filtrado[df_filtrado["Projeto"].isin(projeto_escolhido)]
     
     if "Todos os Colaboradores" not in colaborador_escolhido:
         df_filtrado = df_filtrado[df_filtrado["Nome"].isin(colaborador_escolhido)]
     
     if "Todos os Anos" not in str(ano_escolhido):
-        df_filtrado = df_filtrado[df_filtrado["Ano"] == ano_escolhido]
+        df_filtrado = df_filtrado[df_filtrado["Ano"].isin(ano_escolhido)]
     
     if "Todos os Meses" not in mes_escolhido:
-        df_filtrado = df_filtrado[df_filtrado["Mes"] == mes_escolhido]
+        df_filtrado = df_filtrado[df_filtrado["Mes"].isin(mes_escolhido)]
 
     if df_filtrado.empty:
         st.info("⚠️ Nenhum registro encontrado para o projeto selecionado.")
