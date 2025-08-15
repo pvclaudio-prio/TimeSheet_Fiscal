@@ -454,11 +454,15 @@ if menu == "🏠 Dashboard":
         st.plotly_chart(px.bar(gc, x="Nome", y="Horas", text_auto='.2s'), use_container_width=True)
 
         st.subheader("📅 Evolução de Horas no Tempo (Por Dia)")
-        gt = df_filtrado.groupby(df_filtrado["Data"].dt.date)["Horas"].sum().reset_index().rename(columns={"Data": "Dia"})
-        fig = px.line(gt, x="index", y="Horas", markers=True)
-        fig.update_xaxes(title="Dia", type='category')
+        gt = (
+            df_filtrado.assign(Dia=df_filtrado["Data"].dt.date)
+            .groupby("Dia", as_index=False)["Horas"].sum()
+            .sort_values("Dia")
+        )
+        fig = px.line(gt, x="Dia", y="Horas", markers=True)
+        fig.update_xaxes(title="Dia", type="category")
         fig.update_yaxes(title="Horas")
-        st.plotly_chart(px.line(gt, x=gt.columns[0], y="Horas", markers=True), use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 
 # =============================================
 # CONTEÚDO: EMPRESAS
