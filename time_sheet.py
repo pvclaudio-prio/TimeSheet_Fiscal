@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import tempfile
-from datetime import datetime, date, time
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
+from datetime import datetime, date, time as dt_time
+from pydrive2.auth import GoogleAuth
+from pydrive2.drive import GoogleDrive
 from oauth2client.client import OAuth2Credentials
 import httplib2
 from openai import OpenAI
@@ -13,14 +13,32 @@ from docx.shared import Pt
 import plotly.express as px
 import re
 import uuid
+import time
 
+# =============================================
+# CONFIGURAÇÕES GERAIS
+# =============================================
 st.set_page_config(page_title="Timesheet Fiscal", layout="wide")
 st.sidebar.markdown(f"📅 Hoje é: **{date.today().strftime('%d/%m/%Y')}**")
 
-# -----------------------------
-# Validação Usuários
-# -----------------------------
+CSV_SEP = ";"
+CSV_ENC = "utf-8-sig"
+BASES = {
+    "timesheet.csv": [
+        "ID", "Usuário", "Nome", "Data", "Empresa", "Projeto", "Time",
+        "Atividade", "Quantidade", "Horas Gastas", "Observações",
+        "DataHoraLancamento"
+    ],
+    "empresas.csv": ["Codigo SAP", "Nome Empresa", "Descrição"],
+    "projetos.csv": ["Nome Projeto", "Time", "Status"],
+    "atividades.csv": ["Nome Atividade", "Projeto Vinculado", "Descrição", "Status"],
+}
 
+ADMIN_USERS = ["cvieira", "wreis", "waraujo", "iassis"]
+
+# =============================================
+# AUTENTICAÇÃO
+# =============================================
 @st.cache_data
 def carregar_usuarios():
     usuarios_config = st.secrets.get("users", {})
@@ -29,7 +47,7 @@ def carregar_usuarios():
         try:
             nome, senha = dados.split("|", 1)
             usuarios[user] = {"name": nome, "password": senha}
-        except:
+        except Exception:
             st.warning(f"Erro ao carregar usuário '{user}' nos secrets.")
     return usuarios
 
@@ -61,15 +79,12 @@ if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
     st.session_state.username = ""
     st.rerun()
-    
-admin_users = ["cvieira", "wreis", "waraujo", "iassis"]
 
-# -----------------------------
-# Funções Auxiliares
-# -----------------------------
+# =============================================
+# GOOGLE DRIVE (PyDrive2) + UTILITÁRIOS
+# =============================================
 
-# 🚀 Conexão com Google Drive
-def conectar_drive():
+def _build_credentials_from_secrets():
     cred_dict = st.secrets["credentials"]
     credentials = OAuth2Credentials(
         access_token=cred_dict["access_token"],
@@ -79,242 +94,276 @@ def conectar_drive():
         token_expiry=datetime.strptime(cred_dict["token_expiry"], "%Y-%m-%dT%H:%M:%SZ"),
         token_uri=cred_dict["token_uri"],
         user_agent="streamlit-app/1.0",
-        revoke_uri=cred_dict["revoke_uri"]
+        revoke_uri=cred_dict.get("revoke_uri")
     )
-
     http = httplib2.Http()
+    credentials.refresh(http)
+    return credentials
 
-    try:
-        credentials.refresh(http)
-    except Exception as e:
-        st.error(f"Erro ao atualizar credenciais: {e}")
-        st.stop()
-
+@st.cache_resource(show_spinner=False)
+def conectar_drive():
     gauth = GoogleAuth()
-    gauth.credentials = credentials
+    gauth.credentials = _build_credentials_from_secrets()
     drive = GoogleDrive(gauth)
     return drive
 
-def garantir_ids_legado(df):
-    # 🆔 Garante que todos os registros tenham um ID único
-    if "ID" not in df.columns:
-        df["ID"] = [str(uuid.uuid4()) for _ in range(len(df))]
-    else:
-        df["ID"] = df["ID"].apply(lambda x: str(uuid.uuid4()) if pd.isna(x) or str(x).strip() == '' else str(x))
-
-    # 🕒 Garante que todos tenham DataHora de Lançamento
-    if "DataHoraLancamento" not in df.columns:
-        df["DataHoraLancamento"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    else:
-        df["DataHoraLancamento"] = df["DataHoraLancamento"].fillna(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-
-    return df
-    
-# 🚩 Obter pasta ts-fiscal
-def obter_pasta_ts_fiscal(drive):
+@st.cache_resource(show_spinner=False)
+def obter_pasta_ts_fiscal_id():
+    drive = conectar_drive()
     lista = drive.ListFile({
         'q': "title='ts-fiscal' and mimeType='application/vnd.google-apps.folder' and trashed=false"
     }).GetList()
-
     if lista:
         return lista[0]['id']
-    else:
-        pasta = drive.CreateFile({
-            'title': 'ts-fiscal',
-            'mimeType': 'application/vnd.google-apps.folder'
-        })
-        pasta.Upload()
-        return pasta['id']
+    pasta = drive.CreateFile({
+        'title': 'ts-fiscal',
+        'mimeType': 'application/vnd.google-apps.folder'
+    })
+    pasta.Upload()
+    return pasta['id']
 
-# 📥 Carregar arquivo
-def carregar_arquivo(nome_arquivo):
+# ---------- Locks ----------
+
+def _locks_folder_id(drive, root_id):
+    lista = drive.ListFile({'q': f"'{root_id}' in parents and title='locks' and mimeType='application/vnd.google-apps.folder' and trashed=false"}).GetList()
+    if lista:
+        return lista[0]['id']
+    p = drive.CreateFile({'title': 'locks', 'mimeType': 'application/vnd.google-apps.folder', 'parents': [{'id': root_id}]})
+    p.Upload()
+    return p['id']
+
+class DriveLock:
+    def __init__(self, base_name: str, timeout_sec: int = 8):
+        self.drive = conectar_drive()
+        self.root_id = obter_pasta_ts_fiscal_id()
+        self.locks_id = _locks_folder_id(self.drive, self.root_id)
+        self.base_name = base_name
+        self.lock_title = f"{base_name}.lock"
+        self.timeout_sec = timeout_sec
+        self.file = None
+
+    def acquire(self):
+        start = time.time()
+        while True:
+            existing = self.drive.ListFile({'q': f"'{self.locks_id}' in parents and title='{self.lock_title}' and trashed=false"}).GetList()
+            if not existing:
+                # create
+                f = self.drive.CreateFile({'title': self.lock_title, 'parents': [{'id': self.locks_id}]})
+                f.SetContentString(f"locked-by={st.session_state.username}; ts={datetime.now().isoformat()}")
+                try:
+                    f.Upload()
+                    self.file = f
+                    return True
+                except Exception:
+                    pass
+            if time.time() - start > self.timeout_sec:
+                return False
+            time.sleep(0.4)
+
+    def release(self):
+        try:
+            if self.file is not None:
+                self.file.Delete()
+        except Exception:
+            pass
+
+# ---------- Arquivos base ----------
+
+def _ensure_base_exists(title: str):
     drive = conectar_drive()
-    pasta_id = obter_pasta_ts_fiscal(drive)
+    root_id = obter_pasta_ts_fiscal_id()
+    files = drive.ListFile({'q': f"'{root_id}' in parents and title='{title}' and trashed=false"}).GetList()
+    if files:
+        return files[0]
+    # criar novo com colunas padrão
+    cols = BASES[title]
+    df = pd.DataFrame(columns=cols)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
+    df.to_csv(tmp, sep=CSV_SEP, index=False, encoding=CSV_ENC)
+    f = drive.CreateFile({'title': title, 'parents': [{'id': root_id}]})
+    f.SetContentFile(tmp)
+    f.Upload()
+    return f
 
+
+def _get_latest_by_title(title: str):
+    drive = conectar_drive()
+    root_id = obter_pasta_ts_fiscal_id()
+    files = drive.ListFile({'q': f"'{root_id}' in parents and title='{title}' and trashed=false"}).GetList()
+    if not files:
+        return _ensure_base_exists(title)
+    # se houver múltiplos, pega o mais recente por modifiedDate
+    files.sort(key=lambda x: x.get('modifiedDate', ''), reverse=True)
+    return files[0]
+
+
+def _read_csv_file(file_obj):
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
+    file_obj.GetContentFile(tmp)
+    df = pd.read_csv(tmp, sep=CSV_SEP, encoding=CSV_ENC)
+    meta = {
+        'id': file_obj['id'],
+        'title': file_obj['title'],
+        'modifiedDate': file_obj.get('modifiedDate'),
+        'version': file_obj.get('version'),
+    }
+    return df, meta
+
+
+def carregar_base(title: str):
+    f = _get_latest_by_title(title)
+    return _read_csv_file(f)
+
+
+def _save_csv_to_file(file_obj, df: pd.DataFrame):
+    # normaliza Data (se existir) para ISO string
+    if 'Data' in df.columns:
+        df['Data'] = pd.to_datetime(df['Data'], errors='coerce').dt.strftime('%Y-%m-%d')
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
+    df.to_csv(tmp, sep=CSV_SEP, index=False, encoding=CSV_ENC)
+    file_obj.SetContentFile(tmp)
+    file_obj.Upload()
+    return file_obj
+
+
+def salvar_backup(df: pd.DataFrame, base_title: str, revision: str | None):
+    drive = conectar_drive()
+    root_id = obter_pasta_ts_fiscal_id()
+    base_sem_ext = base_title.rsplit('.', 1)[0]
+    pasta_nome = f"Backup_{base_sem_ext}"
+    pasta_list = drive.ListFile({'q': f"'{root_id}' in parents and title='{pasta_nome}' and mimeType='application/vnd.google-apps.folder' and trashed=false"}).GetList()
+    if pasta_list:
+        backup_id = pasta_list[0]['id']
+    else:
+        p = drive.CreateFile({'title': pasta_nome, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [{'id': root_id}]})
+        p.Upload()
+        backup_id = p['id']
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    rev = f"rev-{revision}" if revision else "rev-unknown"
+    fname = f"{base_sem_ext}__{ts}__{rev}.csv"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
+    df.to_csv(tmp, sep=CSV_SEP, index=False, encoding=CSV_ENC)
+    arq = drive.CreateFile({'title': fname, 'parents': [{'id': backup_id}]})
+    arq.SetContentFile(tmp)
+    arq.Upload()
+
+# ---------- Operações de escrita seguras ----------
+
+def append_rows(title: str, df_new: pd.DataFrame):
+    lock = DriveLock(title)
+    if not lock.acquire():
+        st.error("Sistema ocupado. Tente novamente em alguns segundos.")
+        return False
     try:
-        arquivos = drive.ListFile({
-            'q': f"'{pasta_id}' in parents and title = '{nome_arquivo}' and trashed=false"
-        }).GetList()
-    except Exception as e:
-        st.error(f"❌ Erro ao acessar o Drive: {e}")
-        st.stop()
+        file = _get_latest_by_title(title)
+        df_cur, meta = _read_csv_file(file)
+        # alinhar colunas
+        all_cols = sorted(set(df_cur.columns).union(df_new.columns))
+        df_cur = df_cur.reindex(columns=all_cols)
+        df_new = df_new.reindex(columns=all_cols)
+        df_merged = pd.concat([df_cur, df_new], ignore_index=True)
+        if 'ID' in df_merged.columns:
+            df_merged = df_merged.drop_duplicates(subset=['ID'], keep='last')
+        file = _save_csv_to_file(file, df_merged)
+        salvar_backup(df_merged, title, file.get('version'))
+        return True
+    finally:
+        lock.release()
 
-    if not arquivos:
-        st.error(f"❌ Arquivo '{nome_arquivo}' não encontrado no Google Drive.")
-        st.stop()
 
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
-    arquivos[0].GetContentFile(caminho_temp)
+def update_row_by_id(title: str, row_id: str, updates: dict):
+    lock = DriveLock(title)
+    if not lock.acquire():
+        st.error("Sistema ocupado. Tente novamente em alguns segundos.")
+        return False
+    try:
+        file = _get_latest_by_title(title)
+        df, meta = _read_csv_file(file)
+        if 'ID' not in df.columns:
+            st.error("Base sem coluna ID. Não é possível editar com segurança.")
+            return False
+        mask = df['ID'] == row_id
+        if not mask.any():
+            st.error("Registro não encontrado. Recarregue a página.")
+            return False
+        for k, v in updates.items():
+            if k in df.columns:
+                df.loc[mask, k] = v
+        file = _save_csv_to_file(file, df)
+        salvar_backup(df, title, file.get('version'))
+        return True
+    finally:
+        lock.release()
 
-    df = pd.read_csv(caminho_temp, sep=";", encoding="utf-8-sig")
 
-    if df.empty:
-        st.warning("⚠️ A base foi carregada, mas está vazia.")
+def delete_row_by_id(title: str, row_id: str):
+    lock = DriveLock(title)
+    if not lock.acquire():
+        st.error("Sistema ocupado. Tente novamente em alguns segundos.")
+        return False
+    try:
+        file = _get_latest_by_title(title)
+        df, meta = _read_csv_file(file)
+        if 'ID' not in df.columns:
+            st.error("Base sem coluna ID. Não é possível excluir com segurança.")
+            return False
+        before = len(df)
+        df = df[df['ID'] != row_id]
+        after = len(df)
+        if before == after:
+            st.error("Registro não encontrado. Recarregue a página.")
+            return False
+        file = _save_csv_to_file(file, df)
+        salvar_backup(df, title, file.get('version'))
+        return True
+    finally:
+        lock.release()
 
-    # 🧹 Tratamento padrão
-    df = tratar_coluna_data(df)
-    df = normalizar_coluna_horas(df)
+# =============================================
+# TRATAMENTO DE CAMPOS
+# =============================================
 
-    # 🔐 Garante consistência de IDs e DataHora para legado
-    df = garantir_ids_legado(df)
-
-    return df
-
-# 💾 Salvar arquivo
 def gerar_id_unico():
     return str(uuid.uuid4())
 
-def salvar_arquivo(df, nome_arquivo, sobrescrever=False):
-    """
-    ⚙️ Salva o arquivo no Google Drive.
-    - sobrescrever=True → substitui o arquivo inteiro pela base atual (exclusões e edições).
-    - sobrescrever=False → adiciona novos registros à base existente (lançamento de timesheet).
-    """
-    drive = conectar_drive()
-    pasta_id = obter_pasta_ts_fiscal(drive)
 
-    if not sobrescrever:
-        try:
-            df_existente = carregar_arquivo(nome_arquivo)
-            if df_existente.empty:
-                st.error(f"❌ A base '{nome_arquivo}' não foi carregada corretamente. Cancelando operação para evitar perda de dados.")
-                st.stop()
-        except Exception as e:
-            st.error(f"❌ Erro crítico ao carregar a base '{nome_arquivo}': {e}")
-            st.stop()
-
-        # 🔗 Alinhar colunas
-        all_columns = sorted(set(df_existente.columns).union(set(df.columns)))
-        df_existente = df_existente.reindex(columns=all_columns)
-        df = df.reindex(columns=all_columns)
-
-        # 🔗 Concatenar
-        df = pd.concat([df_existente, df], ignore_index=True)
-
-    # ✅ Forçar formatação da Data
-    if "Data" in df.columns:
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce").dt.strftime('%Y-%m-%d')
-
-    # 🔥 Salvar no temporário
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
-    df.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
-
-    # 🚀 Upload
-    arquivos = drive.ListFile({
-        'q': f"'{pasta_id}' in parents and title = '{nome_arquivo}' and trashed=false"
-    }).GetList()
-
-    if arquivos:
-        arquivo = arquivos[0]
-    else:
-        arquivo = drive.CreateFile({
-            'title': nome_arquivo,
-            'parents': [{'id': pasta_id}]
-        })
-
-    arquivo.SetContentFile(caminho_temp)
-    arquivo.Upload()
-
-    salvar_backup_redundante(df, nome_base=nome_arquivo)
-    
-# 🏢 Carregar e salvar empresas
-def carregar_empresas():
-    df = carregar_arquivo("empresas.csv")
-    return df
-
-def salvar_empresas(df):
-    salvar_arquivo(df, "empresas.csv")
-
-# ⏰ Tratamento de horas
 def formatar_horas(horas_input):
-    if not horas_input:
+    if horas_input is None or str(horas_input).strip() == "":
         return None
     horas_input = str(horas_input).strip().replace(",", ".")
     pattern = re.fullmatch(r"(\d{1,2})[:;.,](\d{1,2})", horas_input)
-
     if pattern:
         h, m = map(int, pattern.groups())
         if 0 <= h < 24 and 0 <= m < 60:
             return f"{h:02d}:{m:02d}"
-
     try:
         decimal = float(horas_input)
-        total_minutos = int(round(decimal * 60))
-        h = total_minutos // 60
-        m = total_minutos % 60
+        total_min = int(round(decimal * 60))
+        h = total_min // 60
+        m = total_min % 60
         return f"{h:02d}:{m:02d}"
-    except:
+    except Exception:
         return None
+
 
 def normalizar_coluna_horas(df, coluna="Horas Gastas"):
     if coluna in df.columns:
         df[coluna] = df[coluna].astype(str).apply(formatar_horas)
     return df
 
-# 📅 Tratamento de data
+
 def tratar_coluna_data(df, coluna="Data"):
     if coluna in df.columns:
-        # Primeiro tenta ler padrão ISO (YYYY-MM-DD) sem ambiguidades
-        df[coluna] = pd.to_datetime(df[coluna], errors="coerce", format="%Y-%m-%d")
-
-        # Se ainda tiver datas NaT, tenta outros formatos comuns
-        if df[coluna].isnull().sum() > 0:
-            df.loc[df[coluna].isnull(), coluna] = pd.to_datetime(
-                df.loc[df[coluna].isnull(), coluna], errors="coerce", dayfirst=True
-            )
-
-        df = df[df[coluna].notnull()]  # Remove linhas inválidas
+        parsed = pd.to_datetime(df[coluna], errors="coerce", format="%Y-%m-%d")
+        df["DataValida"] = parsed.notnull()
+        df[coluna] = parsed
     return df
 
-# 🗂️ Backup redundante
-def salvar_backup_redundante(df, nome_base="timesheet.csv"):
-    drive = conectar_drive()
-    pasta_principal_id = obter_pasta_ts_fiscal(drive)
-
-    lista = drive.ListFile({
-        'q': f"'{pasta_principal_id}' in parents and title='Backup' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    }).GetList()
-
-    if lista:
-        pasta_backup_id = lista[0]['id']
-    else:
-        pasta = drive.CreateFile({
-            'title': 'Backup',
-            'mimeType': 'application/vnd.google-apps.folder',
-            'parents': [{'id': pasta_principal_id}]
-        })
-        pasta.Upload()
-        pasta_backup_id = pasta['id']
-
-    arquivos_backup = drive.ListFile({
-        'q': f"'{pasta_backup_id}' in parents and title contains 'timesheet(' and trashed=false"
-    }).GetList()
-
-    padrao = re.compile(r"timesheet\((\d+)\)\.csv$")
-    numeros_existentes = [
-        int(match.group(1)) for arq in arquivos_backup
-        if (match := padrao.search(arq['title']))
-    ]
-    proximo_numero = max(numeros_existentes, default=0) + 1
-
-    nome_versao = f"timesheet({proximo_numero}).csv"
-
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv").name
-    df.to_csv(caminho_temp, sep=";", index=False, encoding="utf-8-sig")
-
-    arquivo_backup = drive.CreateFile({
-        'title': nome_versao,
-        'parents': [{'id': pasta_backup_id}]
-    })
-    arquivo_backup.SetContentFile(caminho_temp)
-    arquivo_backup.Upload()
-
-# -----------------------------
-# Menu Latereal
-# -----------------------------
+# =============================================
+# MENU LATERAL
+# =============================================
 
 st.sidebar.title("📋 Menu")
-
 menu = st.sidebar.radio("Navegar para:", [
     "🏠 Dashboard",
     "🏢 Cadastro de Empresas",
@@ -324,759 +373,574 @@ menu = st.sidebar.radio("Navegar para:", [
     "📊 Avaliação de Performance — IA"
 ])
 
-# -----------------------------
-# Conteúdo das Páginas
-# -----------------------------
+# =============================================
+# CONTEÚDO: DASHBOARD
+# =============================================
 
 if menu == "🏠 Dashboard":
     st.title("📊 Painel de KPIs do Timesheet")
-
-    # 🔗 Carregar Dados
-    df_timesheet = carregar_arquivo(
-        "timesheet.csv")
+    df_timesheet, meta = carregar_base("timesheet.csv")
     df_timesheet = normalizar_coluna_horas(df_timesheet)
     df_timesheet = tratar_coluna_data(df_timesheet)
 
     if df_timesheet.empty:
         st.info("⚠️ Não há dados no timesheet para gerar dashboard.")
         st.stop()
-      
-    # 🔢 Conversão de Horas
+
     def converter_para_horas(horas_str):
         try:
-            h, m = map(int, horas_str.strip().split(":"))
+            h, m = map(int, str(horas_str).strip().split(":"))
             return h + m / 60
-        except:
+        except Exception:
             return 0
-    
-    df_timesheet["Horas"] = df_timesheet["Horas Gastas"].apply(converter_para_horas)
-    
-    # 🔍 Filtros
+
+    df_ts = df_timesheet[df_timesheet.get("DataValida", True) == True].copy()
+    df_ts["Horas"] = df_ts["Horas Gastas"].apply(converter_para_horas)
+
+    # Filtros
     st.sidebar.subheader("🔍 Filtros")
-    df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], dayfirst=True, errors="coerce")
-    data_inicial, data_final = st.sidebar.date_input(
-        "Período:",
-        [df_timesheet["Data"].min().date(), df_timesheet["Data"].max().date()]
-    )
-    
-    empresa = st.sidebar.selectbox(
-        "Empresa:",
-        ["Todas"] + sorted(df_timesheet["Empresa"].dropna().unique().tolist())
-    )
-    
-    projeto = st.sidebar.selectbox(
-        "Projeto:",
-        ["Todos"] + sorted(df_timesheet["Projeto"].dropna().unique().tolist())
-    )
+    df_ts["Data"] = pd.to_datetime(df_ts["Data"], errors="coerce")
+    periodo_padrao = [
+        (df_ts["Data"].min().date() if not df_ts.empty else date.today()),
+        (df_ts["Data"].max().date() if not df_ts.empty else date.today())
+    ]
+    data_inicial, data_final = st.sidebar.date_input("Período:", periodo_padrao)
 
-    time = st.sidebar.selectbox(
-        "Time:",
-        ["Todos"] + sorted(df_timesheet["Time"].dropna().unique().tolist())
-    )
+    empresa = st.sidebar.selectbox("Empresa:", ["Todas"] + sorted(df_ts["Empresa"].dropna().unique().tolist()))
+    projeto = st.sidebar.selectbox("Projeto:", ["Todos"] + sorted(df_ts["Projeto"].dropna().unique().tolist()))
+    squad = st.sidebar.selectbox("Time:", ["Todos"] + sorted(df_ts["Time"].dropna().unique().tolist()))
+    atividade = st.sidebar.selectbox("Atividade:", ["Todas"] + sorted(df_ts["Atividade"].dropna().unique().tolist()))
 
-    atividade = st.sidebar.selectbox(
-        "Atividade:",
-        ["Todas"] + sorted(df_timesheet["Atividade"].dropna().unique().tolist())
-    )
-    
-    # Aplicar filtros
-    df_filtrado = df_timesheet[
-        (df_timesheet["Data"].dt.date >= data_inicial) &
-        (df_timesheet["Data"].dt.date <= data_final)
-    ].copy()
-    
+    df_filtrado = df_ts[(df_ts["Data"].dt.date >= data_inicial) & (df_ts["Data"].dt.date <= data_final)].copy()
     if empresa != "Todas":
         df_filtrado = df_filtrado[df_filtrado["Empresa"] == empresa]
-    
     if projeto != "Todos":
         df_filtrado = df_filtrado[df_filtrado["Projeto"] == projeto]
-
-    if time != "Todos":
-        df_filtrado = df_filtrado[df_filtrado["Time"] == time]
-
+    if squad != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["Time"] == squad]
     if atividade != "Todas":
         df_filtrado = df_filtrado[df_filtrado["Atividade"] == atividade]
-    
-    # 🚀 KPIs
+
     total_horas = df_filtrado["Horas"].sum()
     total_registros = len(df_filtrado)
     total_colaboradores = df_filtrado["Nome"].nunique()
     total_projetos = df_filtrado["Projeto"].nunique()
-    
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("⏰ Total de Horas", f"{total_horas:.2f}")
-    col2.metric("📄 Total Registros", total_registros)
-    col3.metric("👤 Colaboradores", total_colaboradores)
-    col4.metric("🏗️ Projetos", total_projetos)
-    
-    # 📊 Gráficos
-    
-    # 🔸 Horas por Projeto
-    st.subheader("🏗️ Horas por Projeto")
-    if not df_filtrado.empty:
-        grafico_projeto = df_filtrado.groupby("Projeto")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
-        fig = px.bar(
-            grafico_projeto,
-            x="Projeto",
-            y="Horas",
-            title=None,
-            text_auto='.2s'
-        )
-        st.plotly_chart(fig, use_container_width=True)
 
-    # 🔸 Horas por Time
-    st.subheader("🚀 Horas por Time")
-    if not df_filtrado.empty:
-        grafico_time = df_filtrado.groupby("Time")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
-        fig = px.bar(
-            grafico_time,
-            x="Time",
-            y="Horas",
-            title=None,
-            text_auto='.2s'
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # 🔸 Horas por Atividade
-    st.subheader("🗒️ Horas por Atividade")
-    grafico_atividade = df_filtrado.groupby("Atividade")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
-    fig = px.bar(
-        grafico_atividade.head(),
-        x="Atividade",
-        y="Horas",
-        title=None,
-        text_auto='.2s'
-    )
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # 🔸 Horas por Empresa
-    st.subheader("🏢 Horas por Empresa")
-    grafico_empresa = df_filtrado.groupby("Empresa")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
-    fig = px.pie(
-        grafico_empresa,
-        names="Empresa",
-        values="Horas",
-        title=None,
-        hole=0.4
-    )
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # 🔸 Horas por Colaborador
-    st.subheader("👤 Horas por Colaborador")
-    grafico_colab = df_filtrado.groupby("Nome")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
-    fig = px.bar(
-        grafico_colab,
-        x="Nome",
-        y="Horas",
-        title=None,
-        text_auto='.2s'
-    )
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # 🔸 Evolução Temporal (Somente por dia, sem horas)
-    st.subheader("📅 Evolução de Horas no Tempo (Por Dia)")
-    
-    grafico_tempo = df_filtrado.groupby(df_filtrado["Data"].dt.date)["Horas"].sum().reset_index()
-    grafico_tempo.rename(columns={"Data": "Dia"}, inplace=True)
-    
-    fig = px.line(
-        grafico_tempo,
-        x="Dia",
-        y="Horas",
-        title=None,
-        markers=True
-    )
-    
-    fig.update_xaxes(
-        type='category',
-        title="Data"
-    )
-    
-    fig.update_yaxes(title="Horas")
-    
-    st.plotly_chart(fig, use_container_width=True)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("⏰ Total de Horas", f"{total_horas:.2f}")
+    c2.metric("📄 Total Registros", total_registros)
+    c3.metric("👤 Colaboradores", total_colaboradores)
+    c4.metric("🏗️ Projetos", total_projetos)
 
-# -----------------------------
-# Menu Cadastro de Empresa
-# -----------------------------
+    if not df_filtrado.empty:
+        st.subheader("🏗️ Horas por Projeto")
+        gp = df_filtrado.groupby("Projeto")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
+        st.plotly_chart(px.bar(gp, x="Projeto", y="Horas", text_auto='.2s'), use_container_width=True)
+
+        st.subheader("🚀 Horas por Time")
+        gt = df_filtrado.groupby("Time")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
+        st.plotly_chart(px.bar(gt, x="Time", y="Horas", text_auto='.2s'), use_container_width=True)
+
+        st.subheader("🗒️ Horas por Atividade")
+        ga = df_filtrado.groupby("Atividade")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
+        st.plotly_chart(px.bar(ga.head(), x="Atividade", y="Horas", text_auto='.2s'), use_container_width=True)
+
+        st.subheader("🏢 Horas por Empresa")
+        ge = df_filtrado.groupby("Empresa")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
+        st.plotly_chart(px.pie(ge, names="Empresa", values="Horas", hole=0.4), use_container_width=True)
+
+        st.subheader("👤 Horas por Colaborador")
+        gc = df_filtrado.groupby("Nome")["Horas"].sum().reset_index().sort_values(by="Horas", ascending=False)
+        st.plotly_chart(px.bar(gc, x="Nome", y="Horas", text_auto='.2s'), use_container_width=True)
+
+        st.subheader("📅 Evolução de Horas no Tempo (Por Dia)")
+        gt = df_filtrado.groupby(df_filtrado["Data"].dt.date)["Horas"].sum().reset_index().rename(columns={"Data": "Dia"})
+        fig = px.line(gt, x="index", y="Horas", markers=True)
+        fig.update_xaxes(title="Dia", type='category')
+        fig.update_yaxes(title="Horas")
+        st.plotly_chart(px.line(gt, x=gt.columns[0], y="Horas", markers=True), use_container_width=True)
+
+# =============================================
+# CONTEÚDO: EMPRESAS
+# =============================================
 
 elif menu == "🏢 Cadastro de Empresas":
     st.title("🏢 Cadastro de Empresas (Códigos SAP)")
     st.subheader("📥 Inserir nova empresa")
 
+    df_empresas, _ = carregar_base("empresas.csv")
+
     with st.form("form_empresa"):
-        col1, col2 = st.columns([2, 4])
-        with col1:
+        c1, c2 = st.columns([2, 4])
+        with c1:
             codigo = st.text_input("Código SAP")
-        with col2:
+        with c2:
             nome = st.text_input("Nome da Empresa")
-    
         descricao = st.text_area("Descrição (opcional)", height=100)
-    
-        submitted = st.form_submit_button("💾 Salvar Empresa")
-        if submitted:
+        if st.form_submit_button("💾 Salvar Empresa"):
             if not codigo or not nome:
                 st.warning("⚠️ Código SAP e Nome são obrigatórios.")
             else:
-                df = carregar_empresas()
-                if codigo in df["Codigo SAP"].values:
+                if "Codigo SAP" in df_empresas.columns and codigo in df_empresas["Codigo SAP"].astype(str).values:
                     st.warning("⚠️ Já existe uma empresa cadastrada com este Código SAP.")
                 else:
                     nova = pd.DataFrame({
-                        "Codigo SAP": [codigo.strip()],
-                        "Nome Empresa": [nome.strip()],
-                        "Descrição": [descricao.strip()]
+                        "Codigo SAP": [str(codigo).strip()],
+                        "Nome Empresa": [str(nome).strip()],
+                        "Descrição": [str(descricao).strip()]
                     })
-                    df = pd.concat([df, nova], ignore_index=True)
-                    salvar_empresas(df)
-                    st.success("✅ Empresa cadastrada com sucesso!")
-    
-    # 📄 Empresas Cadastradas
+                    if append_rows("empresas.csv", nova):
+                        st.success("✅ Empresa cadastrada com sucesso!")
+
     st.markdown("---")
     st.markdown("### 🏢 Empresas Cadastradas")
-    
-    df_empresas = carregar_empresas()
-    
+    df_empresas, _ = carregar_base("empresas.csv")
     st.dataframe(df_empresas, use_container_width=True)
-    
-    # 🛠️ Edição e Exclusão
+
     st.markdown("---")
     st.markdown("### 🛠️ Editar ou Excluir Empresa")
-    
-    if not df_empresas.empty:
-        empresa_selecionada = st.selectbox(
-            "Selecione a empresa pelo Código SAP:",
-            df_empresas["Codigo SAP"]
-        )
-    
-        empresa_info = df_empresas[df_empresas["Codigo SAP"] == empresa_selecionada].iloc[0]
-    
-        novo_nome = st.text_input("Novo Nome da Empresa", value=empresa_info["Nome Empresa"])
-        nova_descricao = st.text_area("Nova Descrição", value=empresa_info["Descrição"])
-    
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("✏️ Atualizar Empresa"):
-                df_empresas.loc[df_empresas["Codigo SAP"] == empresa_selecionada, "Nome Empresa"] = novo_nome.strip()
-                df_empresas.loc[df_empresas["Codigo SAP"] == empresa_selecionada, "Descrição"] = nova_descricao.strip()
-                salvar_empresas(df_empresas)
-                st.success("✅ Empresa atualizada com sucesso!")
-                st.experimental_rerun()
-    
-        with col2:
-            if st.button("🗑️ Excluir Empresa"):
-                confirmar = st.radio("⚠️ Tem certeza que deseja excluir?", ["Não", "Sim"], horizontal=True)
-                if confirmar == "Sim":
-                    df_empresas = df_empresas[df_empresas["Codigo SAP"] != empresa_selecionada]
-                    salvar_empresas(df_empresas)
-                    st.success("✅ Empresa excluída com sucesso!")
-                    st.experimental_rerun()
+    if not df_empresas.empty and "Codigo SAP" in df_empresas.columns:
+        empresa_sel = st.selectbox("Selecione a empresa pelo Código SAP:", df_empresas["Codigo SAP"].astype(str).tolist())
+        registro = df_empresas[df_empresas["Codigo SAP"].astype(str) == str(empresa_sel)]
+        if not registro.empty:
+            row = registro.iloc[0]
+            novo_nome = st.text_input("Novo Nome da Empresa", value=row.get("Nome Empresa", ""))
+            nova_desc = st.text_area("Nova Descrição", value=row.get("Descrição", ""))
+            cols = st.columns(2)
+            with cols[0]:
+                if st.button("✏️ Atualizar Empresa"):
+                    idx_mask = (df_empresas["Codigo SAP"].astype(str) == str(empresa_sel))
+                    if idx_mask.any():
+                        # atualizar por regravação completa (pequena base) — mas com lock e backup
+                        df_empresas.loc[idx_mask, "Nome Empresa"] = novo_nome.strip()
+                        df_empresas.loc[idx_mask, "Descrição"] = nova_desc.strip()
+                        # usa update_row_by_id? aqui não há ID; salvamos reescrevendo base inteira com lock
+                        if delete_row_by_id("empresas.csv", row.get("ID", "__noid__")):
+                            pass
+                        # Como empresas não tem ID no seu legado, fazemos overwrite seguro com append_rows refazendo a base
+                        # Estratégia simples: montar base inteira e salvar via _save_csv_to_file
+                        lock = DriveLock("empresas.csv")
+                        if lock.acquire():
+                            try:
+                                file = _get_latest_by_title("empresas.csv")
+                                _save_csv_to_file(file, df_empresas)
+                                salvar_backup(df_empresas, "empresas.csv", file.get('version'))
+                                st.success("✅ Empresa atualizada!")
+                                st.rerun()
+                            finally:
+                                lock.release()
+            with cols[1]:
+                if st.button("🗑️ Excluir Empresa"):
+                    confirmar = st.radio("⚠️ Confirmar exclusão?", ["Não", "Sim"], horizontal=True, key="conf_emp")
+                    if confirmar == "Sim":
+                        df_empresas = df_empresas[df_empresas["Codigo SAP"].astype(str) != str(empresa_sel)]
+                        lock = DriveLock("empresas.csv")
+                        if lock.acquire():
+                            try:
+                                file = _get_latest_by_title("empresas.csv")
+                                _save_csv_to_file(file, df_empresas)
+                                salvar_backup(df_empresas, "empresas.csv", file.get('version'))
+                                st.success("✅ Empresa excluída!")
+                                st.rerun()
+                            finally:
+                                lock.release()
     else:
         st.info("🚩 Nenhuma empresa cadastrada até o momento.")
-            
-# -----------------------------
-# Menu Cadastro de Projeto
-# -----------------------------
+
+# =============================================
+# CONTEÚDO: PROJETOS & ATIVIDADES
+# =============================================
 
 elif menu == "🗂️ Cadastro de Projetos e Atividades":
     st.title("🗂️ Cadastro de Projetos e Atividades")
     st.markdown("## 🏗️ Projetos")
 
-    df_projetos = carregar_arquivo("projetos.csv")
-    
+    df_projetos, _ = carregar_base("projetos.csv")
+
     with st.form("form_projeto"):
         nome_projeto = st.text_input("Nome do Projeto")
-        descricao_projeto = st.selectbox("Time", ["Ambos", "Diretos", "Indiretos"])
+        desc_time = st.selectbox("Time", ["Ambos", "Diretos", "Indiretos"])
         status_projeto = st.selectbox("Status do Projeto", ["Não Iniciado", "Em Andamento", "Concluído"])
-    
-        submitted = st.form_submit_button("💾 Salvar Projeto")
-        if submitted:
+        if st.form_submit_button("💾 Salvar Projeto"):
             if not nome_projeto:
                 st.warning("⚠️ O nome do projeto é obrigatório.")
+            elif "Nome Projeto" in df_projetos.columns and nome_projeto in df_projetos["Nome Projeto"].astype(str).values:
+                st.warning("⚠️ Já existe um projeto com este nome.")
             else:
-                if nome_projeto in df_projetos["Nome Projeto"].values:
-                    st.warning("⚠️ Já existe um projeto com este nome.")
-                else:
-                    novo = pd.DataFrame({
-                        "Nome Projeto": [nome_projeto.strip()],
-                        "Time": [descricao_projeto.strip()],
-                        "Status": [status_projeto]
-                    })
-                    df_projetos = pd.concat([df_projetos, novo], ignore_index=True)
-                    salvar_arquivo(df_projetos, "projetos.csv")
+                novo = pd.DataFrame({
+                    "Nome Projeto": [nome_projeto.strip()],
+                    "Time": [desc_time.strip()],
+                    "Status": [status_projeto]
+                })
+                if append_rows("projetos.csv", novo):
                     st.success("✅ Projeto cadastrado com sucesso!")
-    
+
+    df_projetos, _ = carregar_base("projetos.csv")
     st.dataframe(df_projetos, use_container_width=True)
-    
-    # 🛠️ Edição e Exclusão de Projeto
+
     st.markdown("### 🔧 Editar ou Excluir Projeto")
-    if not df_projetos.empty:
-        projeto_selecionado = st.selectbox("Selecione o Projeto:", df_projetos["Nome Projeto"])
-    
-        # Garantir índice fixo
-        idx = df_projetos[df_projetos["Nome Projeto"] == projeto_selecionado].index
-        if idx.empty:
-            st.warning("⚠️ Projeto não encontrado.")
-            st.stop()
-    
-        projeto_info = df_projetos.loc[idx[0]]
-    
-        novo_nome = st.text_input("Novo Nome do Projeto", value=projeto_info["Nome Projeto"])
-        nova_desc = st.selectbox("Alterar Time", ["Ambos", "Diretos", "Indiretos"], index=["Ambos", "Diretos", "Indiretos"].index(projeto_info["Time"]))
-        novo_status = st.selectbox("Novo Status", ["Não Iniciado", "Em Andamento", "Concluído"], index=["Não Iniciado", "Em Andamento", "Concluído"].index(projeto_info["Status"]))
-    
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("✏️ Atualizar Projeto"):
-                df_projetos.loc[idx, "Nome Projeto"] = novo_nome.strip()
-                df_projetos.loc[idx, "Time"] = nova_desc.strip()
-                df_projetos.loc[idx, "Status"] = novo_status
-                salvar_arquivo(df_projetos, "projetos.csv")
-                st.success("✅ Projeto atualizado com sucesso!")
-                st.experimental_rerun()
-    
-        with col2:
-            if st.button("🗑️ Excluir Projeto"):
-                confirmar = st.radio("⚠️ Tem certeza que deseja excluir?", ["Não", "Sim"], horizontal=True)
-                if confirmar == "Sim":
-                    df_projetos = df_projetos.drop(idx)
-                    salvar_arquivo(df_projetos, "projetos.csv")
-                    st.success("✅ Projeto excluído com sucesso!")
-                    st.experimental_rerun()
-    
-    # 🔸 ATIVIDADES
+    if not df_projetos.empty and "Nome Projeto" in df_projetos.columns:
+        projeto_sel = st.selectbox("Selecione o Projeto:", df_projetos["Nome Projeto"].astype(str).tolist())
+        idx = df_projetos[df_projetos["Nome Projeto"].astype(str) == str(projeto_sel)].index
+        if not idx.empty:
+            row = df_projetos.loc[idx[0]]
+            novo_nome = st.text_input("Novo Nome do Projeto", value=row.get("Nome Projeto", ""))
+            nova_desc = st.selectbox("Alterar Time", ["Ambos", "Diretos", "Indiretos"], index=["Ambos", "Diretos", "Indiretos"].index(row.get("Time", "Ambos")))
+            novo_status = st.selectbox("Novo Status", ["Não Iniciado", "Em Andamento", "Concluído"], index=["Não Iniciado", "Em Andamento", "Concluído"].index(row.get("Status", "Não Iniciado")))
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("✏️ Atualizar Projeto"):
+                    df_projetos.loc[idx, "Nome Projeto"] = novo_nome.strip()
+                    df_projetos.loc[idx, "Time"] = nova_desc.strip()
+                    df_projetos.loc[idx, "Status"] = novo_status
+                    lock = DriveLock("projetos.csv")
+                    if lock.acquire():
+                        try:
+                            file = _get_latest_by_title("projetos.csv")
+                            _save_csv_to_file(file, df_projetos)
+                            salvar_backup(df_projetos, "projetos.csv", file.get('version'))
+                            st.success("✅ Projeto atualizado!")
+                            st.rerun()
+                        finally:
+                            lock.release()
+            with c2:
+                if st.button("🗑️ Excluir Projeto"):
+                    confirmar = st.radio("⚠️ Confirmar Exclusão?", ["Não", "Sim"], horizontal=True)
+                    if confirmar == "Sim":
+                        df_projetos = df_projetos.drop(idx)
+                        lock = DriveLock("projetos.csv")
+                        if lock.acquire():
+                            try:
+                                file = _get_latest_by_title("projetos.csv")
+                                _save_csv_to_file(file, df_projetos)
+                                salvar_backup(df_projetos, "projetos.csv", file.get('version'))
+                                st.success("✅ Projeto excluído!")
+                                st.rerun()
+                            finally:
+                                lock.release()
+
+    # ATIVIDADES
     st.markdown("---")
     st.markdown("## 🗒️ Atividades")
-    
-    df_atividades = carregar_arquivo("atividades.csv")
-    
+    df_atividades, _ = carregar_base("atividades.csv")
+
     with st.form("form_atividade"):
         nome_atividade = st.text_input("Nome da Atividade")
-        projeto_vinculado = st.selectbox("Projeto Vinculado", df_projetos["Nome Projeto"])
-        descricao_atividade = st.text_area("Descrição da Atividade")
-        status_atividade = st.selectbox("Status da Atividade", ["Não Iniciada", "Em Andamento", "Concluída"])
-    
-        submitted = st.form_submit_button("💾 Salvar Atividade")
-        if submitted:
+        projeto_vinc = st.selectbox("Projeto Vinculado", df_projetos["Nome Projeto"].astype(str).tolist() if not df_projetos.empty else [])
+        descricao_atv = st.text_area("Descrição da Atividade")
+        status_atv = st.selectbox("Status da Atividade", ["Não Iniciada", "Em Andamento", "Concluída"])
+        if st.form_submit_button("💾 Salvar Atividade"):
             if not nome_atividade:
                 st.warning("⚠️ O nome da atividade é obrigatório.")
+            elif "Nome Atividade" in df_atividades.columns and nome_atividade in df_atividades["Nome Atividade"].astype(str).values:
+                st.warning("⚠️ Já existe uma atividade com este nome.")
             else:
-                if nome_atividade in df_atividades["Nome Atividade"].values:
-                    st.warning("⚠️ Já existe uma atividade com este nome.")
-                else:
-                    nova = pd.DataFrame({
-                        "Nome Atividade": [nome_atividade.strip()],
-                        "Projeto Vinculado": [projeto_vinculado.strip()],
-                        "Descrição": [descricao_atividade.strip()],
-                        "Status": [status_atividade]
-                    })
-                    df_atividades = pd.concat([df_atividades, nova], ignore_index=True)
-                    salvar_arquivo(df_atividades, "atividades.csv")
+                novo = pd.DataFrame({
+                    "Nome Atividade": [nome_atividade.strip()],
+                    "Projeto Vinculado": [projeto_vinc.strip()],
+                    "Descrição": [descricao_atv.strip()],
+                    "Status": [status_atv]
+                })
+                if append_rows("atividades.csv", novo):
                     st.success("✅ Atividade cadastrada com sucesso!")
-    
-    st.dataframe(df_atividades, use_container_width=True)
-    
-    # 🛠️ Edição e Exclusão de Atividade
-    st.markdown("### 🔧 Editar ou Excluir Atividade")
-    if not df_atividades.empty:
-        atividade_selecionada = st.selectbox("Selecione a Atividade:", df_atividades["Nome Atividade"])
-    
-        idx = df_atividades[df_atividades["Nome Atividade"] == atividade_selecionada].index
-        if idx.empty:
-            st.warning("⚠️ Atividade não encontrada.")
-            st.stop()
-    
-        atividade_info = df_atividades.loc[idx[0]]
-    
-        novo_nome = st.text_input("Novo Nome da Atividade", value=atividade_info["Nome Atividade"])
-        novo_projeto = st.selectbox("Novo Projeto Vinculado", df_projetos["Nome Projeto"], index=df_projetos["Nome Projeto"].tolist().index(atividade_info["Projeto Vinculado"]))
-        nova_desc = st.text_area("Nova Descrição", value=atividade_info["Descrição"])
-        novo_status = st.selectbox("Novo Status", ["Não Iniciada", "Em Andamento", "Concluída"], index=["Não Iniciada", "Em Andamento", "Concluída"].index(atividade_info["Status"]))
-    
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("✏️ Atualizar Atividade"):
-                df_atividades.loc[idx, "Nome Atividade"] = novo_nome.strip()
-                df_atividades.loc[idx, "Projeto Vinculado"] = novo_projeto.strip()
-                df_atividades.loc[idx, "Descrição"] = nova_desc.strip()
-                df_atividades.loc[idx, "Status"] = novo_status
-                salvar_arquivo(df_atividades, "atividades.csv")
-                st.success("✅ Atividade atualizada com sucesso!")
-                st.experimental_rerun()
-    
-        with col2:
-            if st.button("🗑️ Excluir Atividade"):
-                confirmar = st.radio("⚠️ Tem certeza que deseja excluir?", ["Não", "Sim"], horizontal=True)
-                if confirmar == "Sim":
-                    df_atividades = df_atividades.drop(idx)
-                    salvar_arquivo(df_atividades, "atividades.csv")
-                    st.success("✅ Atividade excluída com sucesso!")
-                    st.experimental_rerun()
 
-# -----------------------------
-# Menu Lançamento TS
-# -----------------------------
+    df_atividades, _ = carregar_base("atividades.csv")
+    st.dataframe(df_atividades, use_container_width=True)
+
+    st.markdown("### 🔧 Editar ou Excluir Atividade")
+    if not df_atividades.empty and "Nome Atividade" in df_atividades.columns:
+        atv_sel = st.selectbox("Selecione a Atividade:", df_atividades["Nome Atividade"].astype(str).tolist())
+        idx = df_atividades[df_atividades["Nome Atividade"].astype(str) == str(atv_sel)].index
+        if not idx.empty:
+            row = df_atividades.loc[idx[0]]
+            novo_nome = st.text_input("Novo Nome da Atividade", value=row.get("Nome Atividade", ""))
+            novo_proj = st.selectbox("Novo Projeto Vinculado", df_projetos["Nome Projeto"].astype(str).tolist(), index=max(0, df_projetos["Nome Projeto"].astype(str).tolist().index(row.get("Projeto Vinculado", df_projetos["Nome Projeto"].astype(str).tolist()[0]))))
+            nova_desc = st.text_area("Nova Descrição", value=row.get("Descrição", ""))
+            novo_status = st.selectbox("Novo Status", ["Não Iniciada", "Em Andamento", "Concluída"], index=["Não Iniciada", "Em Andamento", "Concluída"].index(row.get("Status", "Não Iniciada")))
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("✏️ Atualizar Atividade"):
+                    df_atividades.loc[idx, "Nome Atividade"] = novo_nome.strip()
+                    df_atividades.loc[idx, "Projeto Vinculado"] = novo_proj.strip()
+                    df_atividades.loc[idx, "Descrição"] = nova_desc.strip()
+                    df_atividades.loc[idx, "Status"] = novo_status
+                    lock = DriveLock("atividades.csv")
+                    if lock.acquire():
+                        try:
+                            file = _get_latest_by_title("atividades.csv")
+                            _save_csv_to_file(file, df_atividades)
+                            salvar_backup(df_atividades, "atividades.csv", file.get('version'))
+                            st.success("✅ Atividade atualizada!")
+                            st.rerun()
+                        finally:
+                            lock.release()
+            with c2:
+                if st.button("🗑️ Excluir Atividade"):
+                    confirmar = st.radio("⚠️ Confirmar Exclusão?", ["Não", "Sim"], horizontal=True)
+                    if confirmar == "Sim":
+                        df_atividades = df_atividades.drop(idx)
+                        lock = DriveLock("atividades.csv")
+                        if lock.acquire():
+                            try:
+                                file = _get_latest_by_title("atividades.csv")
+                                _save_csv_to_file(file, df_atividades)
+                                salvar_backup(df_atividades, "atividades.csv", file.get('version'))
+                                st.success("✅ Atividade excluída!")
+                                st.rerun()
+                            finally:
+                                lock.release()
+
+# =============================================
+# CONTEÚDO: LANÇAMENTO TS
+# =============================================
 
 elif menu == "📝 Lançamento de Timesheet":
     st.title("📝 Lançamento de Timesheet")
     st.subheader("⏱️ Registro de Horas")
-    
+
     usuario_logado = st.session_state.username
     nome_usuario = users[usuario_logado]["name"]
-    
-    # 🔸 Carregar Bases
-    df_empresas = carregar_arquivo("empresas.csv")
-    df_projetos = carregar_arquivo("projetos.csv")
-    df_atividades = carregar_arquivo("atividades.csv")
-    
-    # 🔸 Seleção de Projeto e Atividade
+
+    df_empresas, _ = carregar_base("empresas.csv")
+    df_projetos, _ = carregar_base("projetos.csv")
+    df_atividades, _ = carregar_base("atividades.csv")
+
     projeto = st.selectbox(
         "Projeto",
-        sorted(df_projetos["Nome Projeto"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
+        sorted(df_projetos["Nome Projeto"].dropna().unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
     )
-    
-    df_atividades_filtrado = df_atividades[df_atividades["Projeto Vinculado"] == projeto]
+
+    df_atividades_filtrado = df_atividades[df_atividades["Projeto Vinculado"].astype(str) == str(projeto)]
     atividade = st.selectbox(
         "Atividade",
-        sorted(df_atividades_filtrado["Nome Atividade"].unique()) if not df_atividades_filtrado.empty else ["Sem atividades para este projeto"]
+        sorted(df_atividades_filtrado["Nome Atividade"].dropna().unique()) if not df_atividades_filtrado.empty else ["Sem atividades para este projeto"]
     )
-    
-    time_opcao = st.selectbox(
+
+    squad = st.selectbox(
         "Time",
-        sorted(df_projetos[df_projetos["Nome Projeto"] == projeto]["Time"].unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
+        sorted(df_projetos[df_projetos["Nome Projeto"].astype(str) == str(projeto)]["Time"].dropna().unique()) if not df_projetos.empty else ["Sem projetos cadastrados"]
     )
-    
-    # 🔸 Formulário de Lançamento
+
     with st.form("form_timesheet"):
-        data = st.date_input("Data", value=date.today())
-    
+        data_sel = st.date_input("Data", value=date.today())
         empresa = st.selectbox(
             "Empresa (Código SAP)",
-            sorted(df_empresas["Codigo SAP"].unique()) if not df_empresas.empty else ["Sem empresas cadastradas"]
+            sorted(df_empresas["Codigo SAP"].dropna().astype(str).unique()) if not df_empresas.empty else ["Sem empresas cadastradas"]
         )
-    
         quantidade = st.number_input("Quantidade Tarefas", min_value=0, step=1)
-    
-        tempo = st.time_input("Horas Gastas", value=time(0, 0))
+        tempo = st.time_input("Horas Gastas", value=dt_time(0, 0))
         horas = f"{tempo.hour:02d}:{tempo.minute:02d}"
-    
-        observacoes = st.text_area(
-            "Observações",
-            placeholder="Descreva detalhes relevantes sobre este lançamento...",
-            height=120,
-            max_chars=500
-        ).replace('\n', ' ').replace(';', ',').strip()
-    
-        submitted = st.form_submit_button("💾 Registrar")
-    
-        if submitted:
-            # 🔒 Validação obrigatória
+        observacoes = st.text_area("Observações", placeholder="Descreva detalhes relevantes sobre este lançamento...", height=120, max_chars=500)
+        if st.form_submit_button("💾 Registrar"):
             if horas == "00:00":
                 st.warning("⚠️ O campo Horas Gastas não pode ser 00:00.")
             elif not projeto or not atividade or not empresa:
                 st.warning("⚠️ Preencha todos os campos obrigatórios antes de registrar.")
             else:
-                # ✅ Gerar ID e Timestamp
                 id_registro = gerar_id_unico()
-                datahora_lancamento = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                
-                # ✔️ Registro novo — APENAS O NOVO, NÃO A BASE INTEIRA
+                datahora_lanc = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 novo = pd.DataFrame({
+                    "ID": [id_registro],
                     "Usuário": [usuario_logado],
                     "Nome": [nome_usuario],
-                    "Data": [data],
-                    "Empresa": [empresa],
-                    "Projeto": [projeto],
-                    "Time": [time_opcao],
-                    "Atividade": [atividade],
-                    "Quantidade": [quantidade],
+                    "Data": [data_sel.strftime('%Y-%m-%d')],
+                    "Empresa": [str(empresa)],
+                    "Projeto": [str(projeto)],
+                    "Time": [str(squad)],
+                    "Atividade": [str(atividade)],
+                    "Quantidade": [int(quantidade)],
                     "Horas Gastas": [horas],
-                    "Observações": [observacoes],
-                    "DataHoraLancamento": [datahora_lancamento],
-                    "ID": [id_registro]
+                    "Observações": [observacoes.replace('\n', ' ').replace(';', ',').strip()],
+                    "DataHoraLancamento": [datahora_lanc]
                 })
-    
-                # 🔥 Salvar apenas o novo
-                salvar_arquivo(novo, "timesheet.csv", sobrescrever=False)
-    
-                st.success("✅ Registro salvo no Timesheet com sucesso!")
+                if append_rows("timesheet.csv", novo):
+                    st.success("✅ Registro salvo no Timesheet com sucesso!")
 
-# -----------------------------
-# Menu Visualizar TS
-# -----------------------------
+# =============================================
+# CONTEÚDO: VISUALIZAR / EDITAR TS
+# =============================================
 
 elif menu == "📄 Visualizar / Editar Timesheet":
     st.title("📄 Visualizar, Editar ou Excluir Timesheet")
-
     usuario_logado = st.session_state.username
 
-    # 🔸 Carregar Dados
-    df_timesheet = carregar_arquivo("timesheet.csv")
-    df_timesheet = normalizar_coluna_horas(df_timesheet)
+    df_ts, _ = carregar_base("timesheet.csv")
+    df_ts = normalizar_coluna_horas(df_ts)
+    df_ts = tratar_coluna_data(df_ts)
 
-    # 🔧 Garantir que a coluna Data está corretamente tratada
-    if "Data" in df_timesheet.columns:
-        df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors="coerce", dayfirst=True)
-        df_timesheet = df_timesheet[df_timesheet["Data"].notnull()]
+    if usuario_logado not in ADMIN_USERS:
+        df_ts = df_ts[df_ts["Usuário"] == usuario_logado]
 
-    # 🔐 Filtrar por usuário logado (não admins só veem seus dados)
-    if usuario_logado not in admin_users:
-        df_timesheet = df_timesheet[df_timesheet["Usuário"] == usuario_logado]
-
-    # 🔍 Filtros na sidebar
     st.sidebar.subheader("🔍 Filtros")
-
-    data_inicial, data_final = st.sidebar.date_input(
-        "Período:",
-        [
-            df_timesheet["Data"].min().date() if not df_timesheet.empty else date.today(),
-            df_timesheet["Data"].max().date() if not df_timesheet.empty else date.today()
-        ]
-    )
-
-    empresa = st.sidebar.selectbox(
-        "Empresa:",
-        ["Todas"] + sorted(df_timesheet["Empresa"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todas"]
-    )
-
-    projeto = st.sidebar.selectbox(
-        "Projeto:",
-        ["Todos"] + sorted(df_timesheet["Projeto"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todos"]
-    )
-
-    time = st.sidebar.selectbox(
-        "Time:",
-        ["Todos"] + sorted(df_timesheet["Time"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todos"]
-    )
-
-    atividade = st.sidebar.selectbox(
-        "Atividade:",
-        ["Todas"] + sorted(df_timesheet["Atividade"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todas"]
-    )
-
-    if usuario_logado in admin_users:
-        usuario = st.sidebar.selectbox(
-            "Nome:",
-            ["Todos"] + sorted(df_timesheet["Nome"].dropna().unique().tolist()) if not df_timesheet.empty else ["Todos"]
-        )
+    if df_ts.empty:
+        period = [date.today(), date.today()]
     else:
-        usuario = usuario_logado
+        period = [
+            (df_ts["Data"].min().date() if pd.notnull(df_ts["Data"].min()) else date.today()),
+            (df_ts["Data"].max().date() if pd.notnull(df_ts["Data"].max()) else date.today())
+        ]
+    data_inicial, data_final = st.sidebar.date_input("Período:", period)
 
-    # 🔸 Aplicar filtros
-    df_filtrado = df_timesheet.copy()
+    empresa = st.sidebar.selectbox("Empresa:", ["Todas"] + sorted(df_ts["Empresa"].dropna().unique().tolist()) if not df_ts.empty else ["Todas"])
+    projeto = st.sidebar.selectbox("Projeto:", ["Todos"] + sorted(df_ts["Projeto"].dropna().unique().tolist()) if not df_ts.empty else ["Todos"])
+    squad = st.sidebar.selectbox("Time:", ["Todos"] + sorted(df_ts["Time"].dropna().unique().tolist()) if not df_ts.empty else ["Todos"])
+    atividade = st.sidebar.selectbox("Atividade:", ["Todas"] + sorted(df_ts["Atividade"].dropna().unique().tolist()) if not df_ts.empty else ["Todas"])
 
+    if usuario_logado in ADMIN_USERS:
+        usuario_sel = st.sidebar.selectbox("Nome:", ["Todos"] + sorted(df_ts["Nome"].dropna().unique().tolist()) if not df_ts.empty else ["Todos"])
+    else:
+        usuario_sel = usuario_logado
+
+    df_f = df_ts.copy()
     if empresa != "Todas":
-        df_filtrado = df_filtrado[df_filtrado["Empresa"] == empresa]
-
+        df_f = df_f[df_f["Empresa"] == empresa]
     if projeto != "Todos":
-        df_filtrado = df_filtrado[df_filtrado["Projeto"] == projeto]
-
-    if time != "Todos":
-        df_filtrado = df_filtrado[df_filtrado["Time"] == time]
-
+        df_f = df_f[df_f["Projeto"] == projeto]
+    if squad != "Todos":
+        df_f = df_f[df_f["Time"] == squad]
     if atividade != "Todas":
-        df_filtrado = df_filtrado[df_filtrado["Atividade"] == atividade]
+        df_f = df_f[df_f["Atividade"] == atividade]
+    if usuario_sel != "Todos":
+        df_f = df_f[df_f["Usuário"] == usuario_sel]
 
-    if usuario != "Todos":
-        df_filtrado = df_filtrado[df_filtrado["Usuário"] == usuario]
+    df_f = df_f[(df_f["Data"].dt.date >= data_inicial) & (df_f["Data"].dt.date <= data_final)].sort_values(by="Data")
 
-    # 🔍 Filtro de período
-    df_filtrado = df_filtrado[
-        (df_filtrado["Data"].dt.date >= data_inicial) & (df_filtrado["Data"].dt.date <= data_final)
-    ].sort_values(by="Data")
-
-    # 🔸 Visualização
-    df_visual = df_filtrado.copy()
+    df_visual = df_f.copy()
     df_visual["Data"] = df_visual["Data"].dt.strftime("%d/%m/%Y")
     df_visual = df_visual.rename(columns={"DataHoraLancamento": "Data de Registro"})
 
-    colunas = [col for col in df_visual.columns if col not in ["ID", "Data de Registro"]]
-    colunas_final = colunas + ["Data de Registro", "ID"]
-    df_visual = df_visual[colunas_final]
+    cols_ordem = [c for c in df_visual.columns if c not in ["ID", "Data de Registro"]] + ["Data de Registro", "ID"]
+    df_visual = df_visual[cols_ordem]
 
     st.markdown(f"### 🔍 {len(df_visual)} registros encontrados")
-
     if df_visual.empty:
         st.info("🚩 Nenhum registro encontrado com os filtros aplicados.")
         st.stop()
     else:
         st.dataframe(df_visual, use_container_width=True)
 
-    # 🔸 Edição de Registro
     st.markdown("---")
     st.subheader("✏️ Editar um Registro")
-
-    indice = st.selectbox("Selecione o índice para editar:", df_filtrado.index.tolist())
-
-    linha = df_filtrado.loc[indice]
+    indice = st.selectbox("Selecione o índice para editar:", df_f.index.tolist())
+    linha = df_f.loc[indice]
 
     col_editar = st.selectbox("Coluna:", [
         "Data", "Nome", "Empresa", "Projeto", "Atividade", "Quantidade", "Horas Gastas", "Observações"
     ])
 
     valor_atual = linha[col_editar]
-
     if col_editar == "Data":
-        novo_valor = st.date_input(
-            "Nova Data",
-            value=valor_atual.date() if pd.notnull(valor_atual) else date.today()
-        )
-        novo_valor = pd.to_datetime(novo_valor)
-
+        novo_valor = st.date_input("Nova Data", value=valor_atual.date() if pd.notnull(valor_atual) else date.today())
+        novo_valor = pd.to_datetime(novo_valor).strftime('%Y-%m-%d')
     elif col_editar == "Quantidade":
-        novo_valor = st.number_input(
-            "Nova Quantidade",
-            value=int(valor_atual) if pd.notnull(valor_atual) else 0
-        )
-
+        novo_valor = st.number_input("Nova Quantidade", value=int(valor_atual) if pd.notnull(valor_atual) else 0)
     else:
-        novo_valor = st.text_input(
-            "Novo Valor",
-            value=str(valor_atual) if pd.notnull(valor_atual) else ""
-        ).replace('\n', ' ').replace(';', ',').strip()
-    
+        novo_valor = st.text_input("Novo Valor", value=str(valor_atual) if pd.notnull(valor_atual) else "").replace('\n', ' ').replace(';', ',').strip()
+
     if st.button("💾 Atualizar Registro"):
-        id_editar = linha["ID"]
-        if pd.isna(id_editar) or id_editar == "":
+        id_editar = linha.get("ID", "")
+        if not id_editar:
             st.error("❌ Este registro não possui ID. Não é possível editar com segurança.")
         else:
-            df_timesheet.loc[df_timesheet["ID"] == id_editar, col_editar] = novo_valor
-            salvar_arquivo(df_timesheet, "timesheet.csv", sobrescrever=True)
-            st.success(f"✅ Registro atualizado com sucesso!")
-            st.experimental_rerun()
+            ok = update_row_by_id("timesheet.csv", id_editar, {col_editar: novo_valor})
+            if ok:
+                st.success("✅ Registro atualizado com sucesso!")
+                st.rerun()
 
-    # 🔸 Exclusão de Registro
     st.markdown("---")
     st.subheader("🗑️ Excluir um Registro")
-
-    indice_excluir = st.selectbox("Índice para excluir:", df_filtrado.index.tolist(), key="excluir")
-
-    linha = df_filtrado.loc[indice_excluir]
+    indice_excluir = st.selectbox("Índice para excluir:", df_f.index.tolist(), key="excluir")
+    linha_x = df_f.loc[indice_excluir]
     st.markdown("**Registro selecionado:**")
-    st.json(linha.to_dict())
+    st.json({k: (v.strftime('%Y-%m-%d') if isinstance(v, (pd.Timestamp,)) else (v if pd.notnull(v) else None)) for k, v in linha_x.to_dict().items()})
 
     confirmar = st.radio("⚠️ Confirmar Exclusão?", ["Não", "Sim"], horizontal=True, key="confirmar_excluir")
-
-    if confirmar == "Sim":
-        if st.button("🗑️ Confirmar Exclusão"):
-            id_excluir = linha["ID"]
-
-            if pd.isna(id_excluir) or id_excluir == "":
-                st.error("❌ Este registro não possui ID. Não é possível excluir com segurança.")
-            else:
-                df_timesheet = df_timesheet[df_timesheet["ID"] != id_excluir]
-                salvar_arquivo(df_timesheet, "timesheet.csv", sobrescrever=True)
+    if confirmar == "Sim" and st.button("🗑️ Confirmar Exclusão"):
+        id_excluir = linha_x.get("ID", "")
+        if not id_excluir:
+            st.error("❌ Este registro não possui ID. Não é possível excluir com segurança.")
+        else:
+            ok = delete_row_by_id("timesheet.csv", id_excluir)
+            if ok:
                 st.success("✅ Registro excluído com sucesso!")
-                st.experimental_rerun()
+                st.rerun()
 
-    # 🔸 Exportação dos Dados
     st.markdown("---")
     st.subheader("📥 Exportar Dados")
-
     df_export = df_visual.copy()
+    buffer = df_export.to_csv(index=False, sep=CSV_SEP, encoding=CSV_ENC).encode()
+    st.download_button(label="📥 Baixar Tabela", data=buffer, file_name="timesheet_filtrado.csv", mime="text/csv")
 
-    buffer = df_export.to_csv(index=False, sep=";", encoding="utf-8-sig").encode()
-
-    st.download_button(
-        label="📥 Baixar Tabela",
-        data=buffer,
-        file_name="timesheet_filtrado.csv",
-        mime="text/csv"
-    )
-
-# -----------------------------
-# Menu Performance
-# -----------------------------
+# =============================================
+# CONTEÚDO: PERFORMANCE — IA
+# =============================================
 
 elif menu == "📊 Avaliação de Performance — IA":
     st.title("📊 Avaliação de Performance com IA")
-
-    # 🔐 Definir admins
     usuario_logado = st.session_state.username
-    
-    # 🔗 Carregar Dados
-    df_timesheet = carregar_arquivo(
-        "timesheet.csv")
-    df_timesheet = normalizar_coluna_horas(df_timesheet)
-    
-    if df_timesheet.empty:
+
+    df_ts, _ = carregar_base("timesheet.csv")
+    df_ts = normalizar_coluna_horas(df_ts)
+    df_ts["Data"] = pd.to_datetime(df_ts["Data"], errors="coerce")
+
+    if df_ts.empty:
         st.info("⚠️ Não há dados no timesheet para avaliar.")
         st.stop()
-    
-    # Tratamento de datas
-    df_timesheet["Data"] = pd.to_datetime(df_timesheet["Data"], errors="coerce")
-    
-    # 🔐 Controle de Permissão
-    if usuario_logado not in admin_users:
+
+    if usuario_logado not in ADMIN_USERS:
         st.error("🚫 Você não tem permissão para acessar a Avaliação de Performance.")
         st.stop()
-    
-    # 🔍 Filtro por Projeto
-    st.markdown("### 🤖 Gerando relatório com IA")
-    
-    lista_projetos = sorted(df_timesheet["Projeto"].dropna().unique().tolist())
-    projeto_escolhido = st.multiselect(
-        "Selecione o Projeto para análise:",
-        ["Todos os Projetos"] + lista_projetos
-    )
-    
-    lista_colaboradores = sorted(df_timesheet["Nome"].dropna().unique().tolist())
-    colaborador_escolhido = st.multiselect(
-        "Selecione o Colaborador para análise:",
-        ["Todos os Colaboradores"] + lista_colaboradores
-    )
 
-    df_timesheet["Ano"] = df_timesheet["Data"].dt.year
-    df_timesheet["Mes"] = df_timesheet["Data"].dt.strftime('%m - %B')
-    
-    anos_disponiveis = sorted(df_timesheet["Ano"].dropna().unique().tolist())
+    st.markdown("### 🤖 Gerando relatório com IA")
+
+    lista_projetos = sorted(df_ts["Projeto"].dropna().unique().tolist())
+    projeto_escolhido = st.multiselect("Selecione o Projeto para análise:", ["Todos os Projetos"] + lista_projetos)
+
+    lista_colaboradores = sorted(df_ts["Nome"].dropna().unique().tolist())
+    colaborador_escolhido = st.multiselect("Selecione o Colaborador para análise:", ["Todos os Colaboradores"] + lista_colaboradores)
+
+    df_ts["Ano"] = df_ts["Data"].dt.year
+    df_ts["Mes"] = df_ts["Data"].dt.strftime('%m - %B')
+    anos_disponiveis = sorted(df_ts["Ano"].dropna().unique().tolist())
     ano_escolhido = st.multiselect("Selecione o Ano:", ["Todos os Anos"] + anos_disponiveis)
-    
-    meses_disponiveis = df_timesheet["Mes"].dropna().unique().tolist()
-    meses_disponiveis_ordenados = sorted(meses_disponiveis, key=lambda x: int(x.split(" - ")[0]))
+
+    meses_disponiveis = df_ts["Mes"].dropna().unique().tolist()
+    meses_disponiveis_ordenados = sorted(meses_disponiveis, key=lambda x: int(str(x).split(" - ")[0]))
     mes_escolhido = st.multiselect("Selecione o Mês:", ["Todos os Meses"] + meses_disponiveis_ordenados)
 
-    # Aplicar filtro
-    df_filtrado = df_timesheet.copy()
-    
+    df_f = df_ts.copy()
     if "Todos os Projetos" not in projeto_escolhido:
-        df_filtrado = df_filtrado[df_filtrado["Projeto"].isin(projeto_escolhido)]
-    
+        df_f = df_f[df_f["Projeto"].isin(projeto_escolhido)]
     if "Todos os Colaboradores" not in colaborador_escolhido:
-        df_filtrado = df_filtrado[df_filtrado["Nome"].isin(colaborador_escolhido)]
-    
+        df_f = df_f[df_f["Nome"].isin(colaborador_escolhido)]
     if "Todos os Anos" not in ano_escolhido:
-        df_filtrado = df_filtrado[df_filtrado["Ano"].isin(ano_escolhido)]
-    
+        df_f = df_f[df_f["Ano"].isin(ano_escolhido)]
     if "Todos os Meses" not in mes_escolhido:
-        df_filtrado = df_filtrado[df_filtrado["Mes"].isin(mes_escolhido)]
+        df_f = df_f[df_f["Mes"].isin(mes_escolhido)]
 
-    if df_filtrado.empty:
-        st.info("⚠️ Nenhum registro encontrado para o projeto selecionado.")
+    if df_f.empty:
+        st.info("⚠️ Nenhum registro encontrado para o filtro selecionado.")
         st.stop()
-    
-    # 🤖 Cliente OpenAI
+
     client = OpenAI(api_key=st.secrets["openai"]["api_key"])
-    
-    # 🔥 Geração do Relatório
-    dados_markdown = df_filtrado.fillna("").astype(str).to_markdown(index=False)
-    
+
+    dados_markdown = df_f.fillna("").astype(str).to_markdown(index=False)
     prompt = f"""
     Você é um consultor especialista em gestão de tempo, produtividade e análise de performance.
-    
+
     Analise os dados do timesheet abaixo e gere um relatório completo e estruturado contendo:
     - ✅ Resumo executivo
     - ✅ Principais indicadores
     - ✅ Gargalos e desvios
     - ✅ Recomendações de melhorias operacionais
     - ✅ Conclusões finais
-    
+
     Seja objetivo, técnico e claro. Utilize contagens, percentuais e análises de tendência.
-    
+
     ### Dados do Timesheet:
     {dados_markdown}
     """
-    
+
     if st.button("🚀 Gerar Relatório de Performance"):
         with st.spinner("A IA está gerando o relatório..."):
             resposta = client.chat.completions.create(
@@ -1087,50 +951,34 @@ elif menu == "📊 Avaliação de Performance — IA":
                 ],
                 temperature=0.2
             )
-    
             texto_relatorio = resposta.choices[0].message.content
-    
             st.success("✅ Relatório gerado com sucesso!")
             st.markdown("### 📄 Relatório Gerado:")
             st.markdown(texto_relatorio)
-    
-            # =============================
-            # 📄 Gerar Arquivo .docx
-            # =============================
+
             doc = Document()
-    
-            # Estilo
             style = doc.styles["Normal"]
             font = style.font
             font.name = 'Arial'
             font.size = Pt(11)
-    
             doc.add_heading("📊 Relatório de Avaliação de Performance", level=1)
-    
-            if projeto_escolhido == "Todos os Projetos":
-                doc.add_paragraph("Projeto: Todos os Projetos")
-            else:
-                doc.add_paragraph(f"Projeto: {projeto_escolhido}")
-    
+            doc.add_paragraph(f"Projetos: {', '.join(projeto_escolhido) if projeto_escolhido else '—'}")
+            doc.add_paragraph(f"Colaboradores: {', '.join(colaborador_escolhido) if colaborador_escolhido else '—'}")
             doc.add_paragraph(f"Data da geração: {datetime.today().strftime('%Y-%m-%d')}")
-    
             doc.add_paragraph("\n")
-    
-            for linha in texto_relatorio.split("\n"):
+            for linha in (texto_relatorio or "").split("\n"):
                 if linha.strip().startswith("#"):
                     nivel = linha.count("#")
                     texto = linha.replace("#", "").strip()
                     doc.add_heading(texto, level=min(nivel, 4))
                 else:
                     doc.add_paragraph(linha.strip())
-    
-            buffer = BytesIO()
-            doc.save(buffer)
-            buffer.seek(0)
-    
+            buff = BytesIO()
+            doc.save(buff)
+            buff.seek(0)
             st.download_button(
                 label="📥 Baixar Relatório em Word",
-                data=buffer,
+                data=buff,
                 file_name="relatorio_performance.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
